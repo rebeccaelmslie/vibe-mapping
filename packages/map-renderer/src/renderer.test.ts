@@ -122,4 +122,12 @@ describe('mapSpecToStyle', () => {
     const style = build();
     expect(find(style, 'hidden')).toBeUndefined();
   });
+
+  it('omits `attribution` when the source has none (MapLibre rejects undefined)', () => {
+    const style = build();
+    // Spec sources in RAW have no attribution; the emitted geojson source
+    // must NOT carry an `attribution` key at all.
+    expect(Object.prototype.hasOwnProperty.call(style.sources.tracks!, 'attribution')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(style.sources.parcels!, 'attribution')).toBe(false);
+  });
 });

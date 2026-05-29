@@ -9,6 +9,7 @@ import { projects } from './routes/projects';
 import { projectSources, sources, sourceData } from './routes/sources';
 import { projectMaps, maps } from './routes/maps';
 import { share } from './routes/share';
+import { debug } from './routes/debug';
 
 const app = new Hono<{ Variables: AppVariables }>();
 
@@ -25,6 +26,7 @@ app.get('/health', (c) => c.json({ ok: true, service: '@vibe/api' }));
 // Public (no auth): shared maps + source data the renderer fetches.
 app.route('/share', share);
 app.route('/sources', sourceData);
+app.route('/debug', debug);
 
 // Authenticated app.
 const api = new Hono<{ Variables: AppVariables }>();

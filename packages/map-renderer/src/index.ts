@@ -20,10 +20,14 @@ const DASH_ARRAYS: Record<'solid' | 'dashed' | 'dotted', number[] | undefined> =
 };
 
 function specSourceToMl(s: SpecSource): MlSource {
+  // Only include `attribution` when the spec actually has one — MapLibre's
+  // style validator rejects `attribution: undefined` and refuses to load the
+  // whole style. Same for vector tiles.
+  const attribution = s.attribution ? { attribution: s.attribution } : {};
   if (s.kind === 'geojson') {
-    return { type: 'geojson', data: s.url, attribution: s.attribution };
+    return { type: 'geojson', data: s.url, ...attribution };
   }
-  return { type: 'vector', tiles: [s.url], attribution: s.attribution };
+  return { type: 'vector', tiles: [s.url], ...attribution };
 }
 
 function geometryLayers(layer: Layer, sourceLayer?: string): MlLayer[] {
