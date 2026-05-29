@@ -97,8 +97,8 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | 1     | Monorepo scaffold (apps, packages, TS, lint, env) | ✅ Done       |
 | 2     | MapSpec + shared renderer + tests                 | ✅ Done       |
 | 3     | API + DB (Drizzle), upload, inspect, share links  | ✅ Done       |
-| 4     | Web: map + chat + upload, Claude tool loop         | ⏳ Next       |
-| 5     | Share link page + viewer                          | ⏳ Stubbed    |
+| 4     | Web: map + chat + upload, Claude tool loop         | ✅ Done       |
+| 5     | Share link page + viewer                          | ⏳ Next       |
 | 6     | Mobile: auth, open shared map, location dot        | ⏳ Scaffolded |
 | 7     | Polish: loading/error/empty states                | ⏳ —          |
 
