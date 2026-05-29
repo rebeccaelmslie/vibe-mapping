@@ -1,4 +1,5 @@
-// @vibe/shared — Zod schemas and shared types.
-// The MapSpec schema (the center of the system) lands here in Phase 2.
+// @vibe/shared — Zod schemas and shared types. The MapSpec is the center of
+// the system: the LLM mutates it via typed tools; web and mobile render from it.
 
-export const SHARED_PACKAGE = '@vibe/shared';
+export * from './styled-value';
+export * from './map-spec';
