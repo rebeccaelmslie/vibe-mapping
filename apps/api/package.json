@@ -9,18 +9,26 @@
     "start": "node dist/index.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.726.1",
+    "@aws-sdk/s3-request-presigner": "^3.726.1",
     "@hono/node-server": "^1.13.7",
     "@vibe/map-renderer": "workspace:*",
     "@vibe/shared": "workspace:*",
-    "hono": "^4.6.16"
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.16",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "drizzle-kit": "^0.30.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   }
 }

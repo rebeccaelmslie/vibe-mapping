@@ -13,6 +13,7 @@
     "S3_SECRET_KEY",
     "S3_BUCKET",
     "API_URL",
+    "PUBLIC_API_URL",
     "NEXT_PUBLIC_API_URL"
   ],
   "tasks": {

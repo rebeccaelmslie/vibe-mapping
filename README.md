@@ -95,17 +95,49 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | Phase | Scope                                             | State        |
 | ----- | ------------------------------------------------- | ------------ |
 | 1     | Monorepo scaffold (apps, packages, TS, lint, env) | ✅ Done       |
-| 2     | MapSpec + shared renderer + tests                 | ⏳ Next       |
-| 3     | API + DB (Drizzle), upload, inspect, share links  | ⏳ Stubbed    |
-| 4     | Web: map + chat + upload, Claude tool loop         | ⏳ Stubbed    |
+| 2     | MapSpec + shared renderer + tests                 | ✅ Done       |
+| 3     | API + DB (Drizzle), upload, inspect, share links  | ✅ Done       |
+| 4     | Web: map + chat + upload, Claude tool loop         | ⏳ Next       |
 | 5     | Share link page + viewer                          | ⏳ Stubbed    |
 | 6     | Mobile: auth, open shared map, location dot        | ⏳ Scaffolded |
 | 7     | Polish: loading/error/empty states                | ⏳ —          |
 
+### API (Phase 3)
+
+The Hono service (`apps/api`) owns the database and object storage. Endpoints:
+
+| Method + path                          | Auth   | Purpose                              |
+| -------------------------------------- | ------ | ------------------------------------ |
+| `GET /health`                          | —      | Liveness                             |
+| `POST /projects`                       | yes    | Create a project                     |
+| `GET /projects`                        | yes    | List your projects                   |
+| `GET /projects/:id`                    | yes    | Project + its sources & maps         |
+| `POST /projects/:id/sources`           | yes    | Upload a file (multipart `file`); converts via gdal, inspects, stores GeoJSON |
+| `GET /projects/:id/sources`            | yes    | List sources                         |
+| `GET /sources/:id`                     | yes    | Source + inspection summary          |
+| `GET /sources/:id/data`                | public | The converted GeoJSON (renderer fetches this) |
+| `POST /projects/:id/maps`              | yes    | Create a map (optional initial spec) |
+| `GET /maps/:id` / `PUT /maps/:id`      | yes    | Read / replace a map's MapSpec       |
+| `POST /maps/:id/share`                 | yes    | Mint a share token                   |
+| `GET /share/:token`                    | public | Resolve a share token to its MapSpec |
+
+> **Auth is stubbed for now.** The API trusts an `x-dev-user-id` header
+> (default `dev_user`); real Clerk verification lands in Phase 4/6. The seam
+> (`apps/api/src/auth.ts`) stays the same.
+
+Run migrations once Postgres is up: `pnpm db:migrate`. Generate new migration
+SQL after editing the schema: `pnpm db:generate` (works offline).
+
+> The PostGIS extension is enabled automatically by the `postgis/postgis` Docker
+> image on first init, so no migration is needed for it. Source geometry is
+> stored as GeoJSON in object storage (not in PostGIS columns) for the MVP.
+
 What runs today after `pnpm install`:
 
 - `pnpm dev` starts the **web** app (placeholder landing page at
-  http://localhost:3000) and the **api** health endpoint
-  (http://localhost:8787/health).
+  http://localhost:3000) and the **api** (health at
+  http://localhost:8787/health). The full API (projects/sources/maps/share)
+  needs Docker (Postgres + MinIO) and `pnpm db:migrate`.
 - `pnpm --filter @vibe/mobile start` boots the Expo dev server (default
   template UI; MapLibre + share-link flow come in Phase 6).
+- `pnpm test` runs the package + API unit tests (renderer, schema, inspection).
