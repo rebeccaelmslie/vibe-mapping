@@ -9,6 +9,7 @@ import { toCatalog } from '@/lib/catalog';
 import { MapView } from '@/components/map-view';
 import { ChatPanel, type ChatMessage } from '@/components/chat-panel';
 import { UploadDropzone } from '@/components/upload-dropzone';
+import { ShareControl } from '@/components/share-control';
 
 async function postChat(spec: MapSpec, sources: ReturnType<typeof toCatalog>, messages: ChatMessage[]) {
   const res = await fetch('/api/chat', {
@@ -40,7 +41,6 @@ export default function ProjectWorkspace() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
   // Keep a ref so async callbacks always see the latest spec/messages.
   const specRef = useRef<MapSpec | null>(null);
@@ -119,16 +119,6 @@ export default function ProjectWorkspace() {
     [projectId, messages, runChat],
   );
 
-  async function handleShare() {
-    if (!mapId) return;
-    try {
-      const { fetchUrl } = await api.shareMap(mapId);
-      setShareUrl(fetchUrl);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Share failed');
-    }
-  }
-
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
@@ -138,20 +128,7 @@ export default function ProjectWorkspace() {
           </Link>
           <span className="font-medium">{projectName || 'Loading…'}</span>
         </div>
-        <div className="flex items-center gap-3">
-          {shareUrl && (
-            <a href={shareUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 underline">
-              {shareUrl}
-            </a>
-          )}
-          <button
-            onClick={handleShare}
-            disabled={!mapId}
-            className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm hover:border-neutral-500 disabled:opacity-40"
-          >
-            Share
-          </button>
-        </div>
+        <ShareControl mapId={mapId} />
       </header>
 
       <div className="flex min-h-0 flex-1">

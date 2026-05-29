@@ -98,8 +98,8 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | 2     | MapSpec + shared renderer + tests                 | ✅ Done       |
 | 3     | API + DB (Drizzle), upload, inspect, share links  | ✅ Done       |
 | 4     | Web: map + chat + upload, Claude tool loop         | ✅ Done       |
-| 5     | Share link page + viewer                          | ⏳ Next       |
-| 6     | Mobile: auth, open shared map, location dot        | ⏳ Scaffolded |
+| 5     | Share link page + viewer                          | ✅ Done       |
+| 6     | Mobile: auth, open shared map, location dot        | ⏳ Next       |
 | 7     | Polish: loading/error/empty states                | ⏳ —          |
 
 ### API (Phase 3)

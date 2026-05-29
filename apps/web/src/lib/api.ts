@@ -78,4 +78,7 @@ export const api = {
 
   shareMap: (id: string) =>
     apiFetch<{ token: string; fetchUrl: string }>(`/maps/${id}/share`, json({})),
+
+  getShared: (token: string) =>
+    apiFetch<{ map: { id: string; name: string; spec: MapSpec } }>(`/share/${token}`),
 };
