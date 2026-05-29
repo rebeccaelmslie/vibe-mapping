@@ -25,6 +25,13 @@
     },
     "plugins": [
       "expo-router",
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Vibe Mapping shows your location on the map you opened."
+        }
+      ],
       [
         "expo-splash-screen",
         {

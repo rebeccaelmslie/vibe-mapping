@@ -3,8 +3,10 @@
   "main": "expo-router/entry",
   "version": "0.0.0",
   "dependencies": {
+    "@maplibre/maplibre-react-native": "^11.2.1",
     "@vibe/map-renderer": "workspace:*",
     "@vibe/shared": "workspace:*",
+    "expo-location": "~56.0.14",
     "@expo/ui": "~56.0.14",
     "expo": "~56.0.6",
     "expo-constants": "~56.0.16",
@@ -30,6 +32,7 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.15",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },

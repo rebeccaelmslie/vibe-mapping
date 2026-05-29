@@ -99,8 +99,30 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | 3     | API + DB (Drizzle), upload, inspect, share links  | ✅ Done       |
 | 4     | Web: map + chat + upload, Claude tool loop         | ✅ Done       |
 | 5     | Share link page + viewer                          | ✅ Done       |
-| 6     | Mobile: auth, open shared map, location dot        | ⏳ Next       |
-| 7     | Polish: loading/error/empty states                | ⏳ —          |
+| 6     | Mobile: open shared map, location dot, recenter    | ✅ Done       |
+| 7     | Polish: loading/error/empty states                | ⏳ Next       |
+
+### Mobile (Phase 6)
+
+`apps/mobile` (Expo + Expo Router) opens shared maps:
+
+- **Home** — paste a share link (`…/s/<token>`) or raw token to open a map.
+- **`/s/[token]`** — fetches the MapSpec from `GET /share/:token` and renders it
+  with `@maplibre/maplibre-react-native` using the **same `@vibe/map-renderer`**
+  as web. Shows the user's location (blue dot) and a recenter button.
+
+> Uses native modules, so it needs a **dev build** (not Expo Go):
+>
+> ```bash
+> cd apps/mobile
+> npx expo prebuild          # generates ios/ + android/
+> npx expo run:ios           # build & launch in the iOS Simulator
+> ```
+>
+> Set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_MAPTILER_API_KEY` (in
+> `apps/mobile/.env`). On a physical device, `EXPO_PUBLIC_API_URL` must be your
+> machine's LAN IP, not `localhost`. The `vibemap://` scheme is registered for
+> deep links.
 
 ### API (Phase 3)
 
