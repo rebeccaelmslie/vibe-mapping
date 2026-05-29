@@ -1,0 +1,54 @@
+# Local infra for Vibe Mapping: PostGIS-enabled Postgres + MinIO object storage.
+# Ports are offset from common defaults to avoid clashing with other local DBs.
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    container_name: vibe-postgres
+    environment:
+      POSTGRES_USER: vibe
+      POSTGRES_PASSWORD: vibe
+      POSTGRES_DB: vibe
+    ports:
+      - '5544:5432'
+    volumes:
+      - vibe-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vibe -d vibe']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: vibe-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: vibe
+      MINIO_ROOT_PASSWORD: vibe-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - vibe-minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Creates the uploads bucket on startup so the API has somewhere to write.
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 vibe vibe-secret &&
+      mc mb --ignore-existing local/vibe-uploads &&
+      echo 'bucket vibe-uploads ready'
+      "
+
+volumes:
+  vibe-pgdata:
+  vibe-minio:
