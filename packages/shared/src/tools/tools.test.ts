@@ -127,4 +127,42 @@ describe('applyTool', () => {
       applyTool('add_layer_from_source', { sourceId: 'missing' }, emptySpec(), ctx),
     ).toThrow(/No source/);
   });
+
+  it('set_layer_labels accepts a template combining multiple attributes', () => {
+    let { spec } = applyTool(
+      'propose_initial_map',
+      { sourceIds: ['src_tracks'] },
+      emptySpec(),
+      ctx,
+    );
+    const layerId = spec.layers[0]!.id;
+    const out = applyTool(
+      'set_layer_labels',
+      { layerId, labels: { template: '{name}\n{type}' } },
+      spec,
+      ctx,
+    );
+    spec = out.spec;
+    expect(spec.layers[0]?.labels?.template).toBe('{name}\n{type}');
+    expect(spec.layers[0]?.labels?.field).toBeUndefined();
+    expect(out.summary).toMatch(/template/);
+  });
+
+  it('set_layer_labels rejects providing both field and template', () => {
+    const { spec } = applyTool(
+      'propose_initial_map',
+      { sourceIds: ['src_tracks'] },
+      emptySpec(),
+      ctx,
+    );
+    const layerId = spec.layers[0]!.id;
+    expect(() =>
+      applyTool(
+        'set_layer_labels',
+        { layerId, labels: { field: 'name', template: '{name}' } },
+        spec,
+        ctx,
+      ),
+    ).toThrow();
+  });
 });

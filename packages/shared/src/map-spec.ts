@@ -21,13 +21,24 @@ export type Source = z.infer<typeof source>;
 // Labels
 // ---------------------------------------------------------------------------
 
-export const labelStyle = z.object({
-  field: z.string(),
-  color: z.string().default('#ffffff'),
-  size: numberValue.default(12),
-  haloColor: z.string().default('#1f2937'),
-  haloWidth: z.number().default(1.2),
-});
+export const labelStyle = z
+  .object({
+    /** Label by a single attribute. */
+    field: z.string().optional(),
+    /**
+     * Or a template combining multiple attributes with literal text:
+     *   "{CPT}/{Stand}\n{YOE}"
+     * Use `\n` for line breaks. `{` cannot currently be escaped.
+     */
+    template: z.string().optional(),
+    color: z.string().default('#ffffff'),
+    size: numberValue.default(12),
+    haloColor: z.string().default('#1f2937'),
+    haloWidth: z.number().default(1.2),
+  })
+  .refine((v) => !!v.field !== !!v.template, {
+    message: 'Provide exactly one of `field` or `template`',
+  });
 export type LabelStyle = z.infer<typeof labelStyle>;
 
 // ---------------------------------------------------------------------------

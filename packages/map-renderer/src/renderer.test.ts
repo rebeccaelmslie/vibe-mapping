@@ -130,4 +130,31 @@ describe('mapSpecToStyle', () => {
     expect(Object.prototype.hasOwnProperty.call(style.sources.tracks!, 'attribution')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(style.sources.parcels!, 'attribution')).toBe(false);
   });
+
+  it('compiles a label template into a coalescing concat expression', () => {
+    const spec: MapSpec = mapSpec.parse({
+      id: 'm',
+      name: 'Tmpl',
+      initialView: { center: [0, 0] },
+      sources: [{ id: 's', kind: 'geojson', url: 'https://e.test/a.geojson' }],
+      layers: [
+        {
+          id: 'stands',
+          type: 'polygon',
+          sourceId: 's',
+          labels: { template: '{CPT}/{Stand}\n{YOE}' },
+        },
+      ],
+    });
+    const style = mapSpecToStyle(spec, { maptilerKey: 'K' });
+    const labels = style.layers.find((l) => l.id === 'stands__labels');
+    expect(labels?.layout?.['text-field']).toEqual([
+      'concat',
+      ['coalesce', ['to-string', ['get', 'CPT']], ''],
+      '/',
+      ['coalesce', ['to-string', ['get', 'Stand']], ''],
+      '\n',
+      ['coalesce', ['to-string', ['get', 'YOE']], ''],
+    ]);
+  });
 });

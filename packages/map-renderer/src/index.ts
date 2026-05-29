@@ -2,7 +2,13 @@
 // style JSON. Imported by both apps/web and apps/mobile.
 
 import type { MapSpec, Layer, Source as SpecSource, LabelStyle } from '@vibe/shared';
-import type { Layer as MlLayer, Source as MlSource, MapLibreStyle } from './maplibre-types';
+import type {
+  Layer as MlLayer,
+  Source as MlSource,
+  MapLibreStyle,
+  Expression,
+  StyleValue,
+} from './maplibre-types';
 import { compileValue, compileFilter } from './expressions';
 import { basemapSource, glyphsUrl } from './basemap';
 
@@ -100,6 +106,33 @@ function geometryLayers(layer: Layer, sourceLayer?: string): MlLayer[] {
   }
 }
 
+/**
+ * Compile a label template like `"{CPT}/{Stand}\n{YOE}"` into a MapLibre
+ * `concat` expression. Each attribute reference is wrapped in
+ * `coalesce(to-string(get(name)), "")` so missing values render as empty
+ * string rather than the literal "null". Literal `{` is not currently
+ * escapable.
+ */
+function compileTemplate(template: string): Expression {
+  const parts: Array<string | Expression> = [];
+  const re = /\{([A-Za-z0-9_]+)\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(template)) !== null) {
+    if (match.index > lastIndex) parts.push(template.slice(lastIndex, match.index));
+    parts.push(['coalesce', ['to-string', ['get', match[1]!]], '']);
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < template.length) parts.push(template.slice(lastIndex));
+  return ['concat', ...parts] as Expression;
+}
+
+function labelTextField(labels: LabelStyle): Expression | StyleValue {
+  if (labels.template) return compileTemplate(labels.template);
+  // Schema guarantees field is set when template isn't.
+  return ['get', labels.field!] as Expression;
+}
+
 function labelLayer(layer: Layer, labels: LabelStyle, sourceLayer?: string): MlLayer {
   return {
     id: `${layer.id}__labels`,
@@ -108,7 +141,7 @@ function labelLayer(layer: Layer, labels: LabelStyle, sourceLayer?: string): MlL
     ...(sourceLayer ? { 'source-layer': sourceLayer } : {}),
     ...(layer.filter ? { filter: compileFilter(layer.filter) } : {}),
     layout: {
-      'text-field': ['get', labels.field],
+      'text-field': labelTextField(labels),
       'text-font': TEXT_FONT,
       'text-size': compileValue(labels.size),
       'text-anchor': layer.type === 'point' ? 'top' : 'center',

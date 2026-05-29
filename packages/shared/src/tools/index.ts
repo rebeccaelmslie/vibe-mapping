@@ -177,18 +177,28 @@ const setLayerStyle = defineTool({
 
 const labelInput = z
   .object({
-    field: z.string(),
+    /** Label by a single attribute. */
+    field: z.string().optional(),
+    /**
+     * Or a template combining multiple attributes with literal text:
+     *   "{CPT}/{Stand}\n{YOE}"
+     * Use \n for line breaks. `{` cannot currently be escaped.
+     */
+    template: z.string().optional(),
     color: z.string().optional(),
     size: numberValue.optional(),
     haloColor: z.string().optional(),
     haloWidth: z.number().optional(),
+  })
+  .refine((v) => !!v.field !== !!v.template, {
+    message: 'Provide exactly one of `field` or `template`',
   })
   .nullable();
 
 const setLayerLabels = defineTool({
   name: 'set_layer_labels',
   description:
-    'Set or clear labels for a layer. Pass {field, color?, size?, haloColor?, haloWidth?} to label by an attribute, or null to remove labels.',
+    'Set or clear labels for a layer. Pass {field, ...} to label by a single attribute, OR {template, ...} to combine attributes with literal text (use \\n for newlines and {AttrName} placeholders), OR null to remove labels. Example: {template: "{CPT}/{Stand}\\n{YOE}"}.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -196,7 +206,11 @@ const setLayerLabels = defineTool({
       labels: {
         type: ['object', 'null'],
         properties: {
-          field: { type: 'string' },
+          field: { type: 'string', description: 'Single attribute name.' },
+          template: {
+            type: 'string',
+            description: 'Template like "{CPT}/{Stand}\\n{YOE}". Provide field OR template, not both.',
+          },
           color: { type: 'string' },
           size: { type: 'number' },
           haloColor: { type: 'string' },
@@ -211,9 +225,10 @@ const setLayerLabels = defineTool({
     const layer = findLayer(draft, args.layerId);
     // Partial label input; the central re-parse fills color/size/halo defaults.
     (layer as { labels: unknown }).labels = args.labels;
-    return args.labels
-      ? `Labelled "${args.layerId}" by "${args.labels.field}".`
-      : `Removed labels from "${args.layerId}".`;
+    if (!args.labels) return `Removed labels from "${args.layerId}".`;
+    return args.labels.template
+      ? `Labelled "${args.layerId}" with template ${JSON.stringify(args.labels.template)}.`
+      : `Labelled "${args.layerId}" by "${args.labels.field}".`;
   },
 });
 

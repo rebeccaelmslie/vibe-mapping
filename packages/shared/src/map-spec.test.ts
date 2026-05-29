@@ -74,4 +74,54 @@ describe('mapSpec schema', () => {
       }),
     ).toThrow();
   });
+
+  it('accepts a label `template` and rejects providing neither / both', () => {
+    const ok = mapSpec.parse({
+      id: 'm',
+      name: 'Tmpl',
+      initialView: { center: [0, 0] },
+      sources: [{ id: 's', kind: 'geojson', url: 'https://e.test/a.geojson' }],
+      layers: [
+        {
+          id: 'l',
+          type: 'polygon',
+          sourceId: 's',
+          labels: { template: '{CPT}/{Stand}\n{YOE}' },
+        },
+      ],
+    });
+    const l0 = ok.layers[0];
+    if (l0?.type === 'polygon') {
+      expect(l0.labels?.template).toBe('{CPT}/{Stand}\n{YOE}');
+      expect(l0.labels?.field).toBeUndefined();
+    }
+
+    const base = {
+      id: 'm',
+      name: 'X',
+      initialView: { center: [0, 0] },
+      sources: [{ id: 's', kind: 'geojson', url: 'https://e.test/a.geojson' }],
+    } as const;
+    // both
+    expect(() =>
+      mapSpec.parse({
+        ...base,
+        layers: [
+          {
+            id: 'l',
+            type: 'polygon',
+            sourceId: 's',
+            labels: { field: 'name', template: '{name}' },
+          },
+        ],
+      }),
+    ).toThrow();
+    // neither
+    expect(() =>
+      mapSpec.parse({
+        ...base,
+        layers: [{ id: 'l', type: 'polygon', sourceId: 's', labels: { color: '#fff' } }],
+      }),
+    ).toThrow();
+  });
 });
