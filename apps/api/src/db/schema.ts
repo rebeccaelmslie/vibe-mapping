@@ -1,6 +1,5 @@
 import { pgTable, text, integer, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
-import type { MapSpec } from '@vibe/shared';
-import type { Inspection } from '../inspect/inspect';
+import type { MapSpec, Inspection } from '@vibe/shared';
 
 // users — keyed by Clerk user id (text). Created on first authenticated request.
 export const users = pgTable('users', {

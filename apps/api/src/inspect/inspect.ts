@@ -3,6 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import type { Inspection, AttributeSummary, AttributeType } from '@vibe/shared';
+
+export type { Inspection, AttributeSummary, AttributeType } from '@vibe/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,28 +28,6 @@ export interface FeatureCollection {
 }
 
 export type SourceFormat = 'geojson' | 'shapefile' | 'kml' | 'gpx';
-
-// ---------------------------------------------------------------------------
-// Inspection result — what the LLM reads to propose an initial map.
-// ---------------------------------------------------------------------------
-export type AttributeType = 'string' | 'number' | 'boolean' | 'mixed' | 'null';
-
-export interface AttributeSummary {
-  name: string;
-  type: AttributeType;
-  presentCount: number;
-  sampleValues: (string | number | boolean)[];
-  valueCounts?: { value: string | number | boolean; count: number }[];
-  numericRange?: { min: number; max: number };
-}
-
-export interface Inspection {
-  geometryType: string; // dominant geometry type
-  geometryTypes: string[]; // all observed types
-  featureCount: number;
-  bbox: [number, number, number, number] | null; // [minLng, minLat, maxLng, maxLat]
-  attributes: AttributeSummary[];
-}
 
 const SAMPLE_CAP = 8;
 const CATEGORICAL_CAP = 20;
