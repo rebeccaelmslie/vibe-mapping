@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { QrCode } from './qr-code';
+import { useToast } from './toast';
 
 export function ShareControl({ mapId }: { mapId: string | null }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function share() {
     if (!mapId) return;
@@ -18,13 +19,12 @@ export function ShareControl({ mapId }: { mapId: string | null }) {
       return;
     }
     setBusy(true);
-    setError(null);
     try {
       const { token } = await api.shareMap(mapId);
       setUrl(`${window.location.origin}/s/${token}`);
       setOpen(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Share failed');
+      toast(e instanceof Error ? e.message : 'Share failed', 'error');
     } finally {
       setBusy(false);
     }
@@ -60,6 +60,7 @@ export function ShareControl({ mapId }: { mapId: string | null }) {
               onClick={async () => {
                 await navigator.clipboard.writeText(url);
                 setCopied(true);
+                toast('Link copied', 'success');
                 setTimeout(() => setCopied(false), 1500);
               }}
               className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white"
@@ -69,8 +70,6 @@ export function ShareControl({ mapId }: { mapId: string | null }) {
           </div>
         </div>
       )}
-
-      {error && <p className="absolute right-0 top-full mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }

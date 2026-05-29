@@ -10,6 +10,8 @@ import { MapView } from '@/components/map-view';
 import { ChatPanel, type ChatMessage } from '@/components/chat-panel';
 import { UploadDropzone } from '@/components/upload-dropzone';
 import { ShareControl } from '@/components/share-control';
+import { SourcesPanel } from '@/components/sources-panel';
+import { useToast } from '@/components/toast';
 
 async function postChat(spec: MapSpec, sources: ReturnType<typeof toCatalog>, messages: ChatMessage[]) {
   const res = await fetch('/api/chat', {
@@ -32,6 +34,7 @@ async function postChat(spec: MapSpec, sources: ReturnType<typeof toCatalog>, me
 
 export default function ProjectWorkspace() {
   const projectId = String(useParams().id);
+  const toast = useToast();
 
   const [projectName, setProjectName] = useState('');
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -40,7 +43,6 @@ export default function ProjectWorkspace() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Keep a ref so async callbacks always see the latest spec/messages.
   const specRef = useRef<MapSpec | null>(null);
@@ -56,29 +58,29 @@ export default function ProjectWorkspace() {
         setMapId(map.id);
         setSpec(map.spec);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load project');
+        toast(e instanceof Error ? e.message : 'Failed to load project', 'error');
       }
     })();
-  }, [projectId]);
+  }, [projectId, toast]);
 
   const runChat = useCallback(
     async (history: ChatMessage[], catalog = toCatalog(sources)) => {
       const currentSpec = specRef.current;
       if (!currentSpec || !mapId) return;
       setBusy(true);
-      setError(null);
       try {
         const { spec: nextSpec, message, applied } = await postChat(currentSpec, catalog, history);
         setSpec(nextSpec);
         setMessages([...history, { role: 'assistant', content: message, applied }]);
         await api.updateMap(mapId, nextSpec);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Chat failed');
+        toast(e instanceof Error ? e.message : 'Chat failed', 'error');
+        setMessages(history);
       } finally {
         setBusy(false);
       }
     },
-    [mapId, sources],
+    [mapId, sources, toast],
   );
 
   const handleSend = useCallback(
@@ -93,13 +95,12 @@ export default function ProjectWorkspace() {
   const handleUpload = useCallback(
     async (file: File) => {
       setUploading(true);
-      setError(null);
       try {
         const { source } = await api.uploadSource(projectId, file);
         const refreshed = await api.getProject(projectId);
         setSources(refreshed.sources);
         if (source.status === 'failed') {
-          setError(`Could not read ${file.name}: ${source.error ?? 'unknown error'}`);
+          toast(`Could not read ${file.name}: ${source.error ?? 'unknown error'}`, 'error');
           return;
         }
         // Let the assistant inspect the new source and propose a starting map.
@@ -111,12 +112,12 @@ export default function ProjectWorkspace() {
         setMessages(history);
         await runChat(history, toCatalog(refreshed.sources));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Upload failed');
+        toast(e instanceof Error ? e.message : 'Upload failed', 'error');
       } finally {
         setUploading(false);
       }
     },
-    [projectId, messages, runChat],
+    [projectId, messages, runChat, toast],
   );
 
   return (
@@ -138,13 +139,20 @@ export default function ProjectWorkspace() {
           ) : (
             <div className="flex h-full items-center justify-center text-neutral-500">Loading map…</div>
           )}
+          {spec && spec.layers.length === 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-6 flex justify-center">
+              <div className="rounded-full bg-neutral-900/90 px-4 py-2 text-sm text-neutral-300 shadow">
+                Upload a file to start your map →
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="flex w-[380px] flex-col border-l border-neutral-800">
           <div className="border-b border-neutral-800 p-3">
             <UploadDropzone onFile={handleUpload} busy={uploading} />
-            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           </div>
+          <SourcesPanel sources={sources} />
           <div className="min-h-0 flex-1">
             <ChatPanel messages={messages} busy={busy} onSend={handleSend} />
           </div>

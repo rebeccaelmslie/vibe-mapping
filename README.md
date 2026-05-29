@@ -45,21 +45,30 @@ raw MapLibre style JSON.
 
 ```bash
 pnpm install                 # install all workspaces
-
 cp .env.example .env         # then fill in keys (see below)
 
-# Once Phase 3+ lands you'll also run:
-# docker compose up -d       # postgres (PostGIS) + minio
-# pnpm db:migrate            # apply Drizzle migrations
+docker compose up -d         # postgres (PostGIS) + minio + bucket
+pnpm db:migrate              # apply Drizzle migrations
 
 pnpm dev                     # turbo runs web (:3000) + api (:8787)
 ```
 
-Mobile is run separately (it isn't part of `turbo run dev`):
+Then open http://localhost:3000, create a project, drop in a GeoJSON/shapefile,
+and chat to style it. Click **Share** for a QR + link that opens the map in a
+browser or the mobile app.
+
+Mobile is run separately and needs a dev build (see [Mobile](#mobile-phase-6)):
 
 ```bash
 pnpm --filter @vibe/mobile start
 ```
+
+### Minimum to see it work
+
+- `ANTHROPIC_API_KEY` — without it the chat returns a clear error.
+- `MAPTILER_API_KEY` **and** `NEXT_PUBLIC_MAPTILER_API_KEY` — without them the
+  map loads but basemap tiles are blank.
+- Docker running + `pnpm db:migrate` — for projects, uploads, and sharing.
 
 ### Environment variables
 
@@ -68,13 +77,15 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | Var                                | Purpose                                        |
 | ---------------------------------- | ---------------------------------------------- |
 | `ANTHROPIC_API_KEY`                | Claude chat + tool use                         |
-| `MAPTILER_API_KEY`                 | Aerial + streets basemaps                      |
+| `MAPTILER_API_KEY`                 | Aerial + streets basemaps (server)             |
+| `NEXT_PUBLIC_MAPTILER_API_KEY`     | Same key, exposed to the browser for MapLibre  |
 | `BASEMAP_PROVIDER`                 | Provider abstraction (default `maptiler`)      |
 | `CLERK_PUBLISHABLE_KEY` / `_SECRET_KEY` | Auth (web + mobile)                       |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk key exposed to the browser              |
 | `DATABASE_URL`                     | PostGIS Postgres (compose default: port 5544)  |
 | `S3_ENDPOINT` / `S3_*`             | MinIO object storage                           |
-| `API_URL` / `NEXT_PUBLIC_API_URL`  | Hono API location                              |
+| `API_URL` / `PUBLIC_API_URL` / `NEXT_PUBLIC_API_URL` | Hono API location            |
+| `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_MAPTILER_API_KEY` | Mobile (in `apps/mobile/.env`) |
 
 > Local Postgres is mapped to **5544** (not 5432/5433) to avoid clashing with
 > other Postgres instances you may already run.
@@ -100,7 +111,7 @@ Copy `.env.example` to `.env` and fill in. Summary:
 | 4     | Web: map + chat + upload, Claude tool loop         | ✅ Done       |
 | 5     | Share link page + viewer                          | ✅ Done       |
 | 6     | Mobile: open shared map, location dot, recenter    | ✅ Done       |
-| 7     | Polish: loading/error/empty states                | ⏳ Next       |
+| 7     | Polish: loading/error/empty states, toasts        | ✅ Done       |
 
 ### Mobile (Phase 6)
 
