@@ -68,8 +68,8 @@ projectSources.post('/', async (c) => {
   const file = body['file'];
   if (!(file instanceof File)) throw badRequest('multipart field `file` is required');
 
-  const format = detectFormat(file.name);
   const buffer = Buffer.from(await file.arrayBuffer());
+  const format = detectFormat(file.name, buffer.subarray(0, 512));
   const sourceId = id('src');
 
   const rawKey = `sources/${sourceId}/raw/${file.name}`;

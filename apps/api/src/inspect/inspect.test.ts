@@ -32,6 +32,26 @@ describe('detectFormat', () => {
     expect(detectFormat('a.gpx')).toBe('gpx');
     expect(() => detectFormat('a.txt')).toThrow();
   });
+
+  it('strips Finder dedup suffixes like " (2)" before checking the extension', () => {
+    expect(detectFormat('Tracks (2).zip')).toBe('shapefile');
+    expect(detectFormat('Boundary (10).geojson')).toBe('geojson');
+  });
+
+  it('sniffs bytes when the extension is missing or unrecognised', () => {
+    const zipHead = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]);
+    expect(detectFormat('Tracks (2)', zipHead)).toBe('shapefile');
+    expect(detectFormat('boundary', Buffer.from('  { "type": "FeatureCollection" }'))).toBe(
+      'geojson',
+    );
+    expect(detectFormat('areas', Buffer.from('<?xml version="1.0"?><kml xmlns="…">'))).toBe('kml');
+    expect(detectFormat('route', Buffer.from('<?xml version="1.0"?><gpx xmlns="…">'))).toBe('gpx');
+  });
+
+  it('still throws when neither name nor bytes give a clue', () => {
+    expect(() => detectFormat('mystery', Buffer.from('hello world'))).toThrow();
+    expect(() => detectFormat('a.txt')).toThrow();
+  });
 });
 
 describe('summarizeGeoJSON', () => {

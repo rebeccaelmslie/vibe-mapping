@@ -32,12 +32,46 @@ export type SourceFormat = 'geojson' | 'shapefile' | 'kml' | 'gpx';
 const SAMPLE_CAP = 8;
 const CATEGORICAL_CAP = 20;
 
-export function detectFormat(filename: string): SourceFormat {
-  const lower = filename.toLowerCase();
+function extensionFormat(name: string): SourceFormat | null {
+  const lower = name.toLowerCase();
   if (lower.endsWith('.geojson') || lower.endsWith('.json')) return 'geojson';
   if (lower.endsWith('.zip') || lower.endsWith('.shp')) return 'shapefile';
   if (lower.endsWith('.kml')) return 'kml';
   if (lower.endsWith('.gpx')) return 'gpx';
+  return null;
+}
+
+function sniffFormat(head: Buffer): SourceFormat | null {
+  if (head.length < 2) return null;
+  // PK\x03\x04 — ZIP local file header (shapefile zip).
+  if (head[0] === 0x50 && head[1] === 0x4b) return 'shapefile';
+  // Skip whitespace, then check the first meaningful character.
+  let i = 0;
+  while (i < head.length && /\s/.test(String.fromCharCode(head[i]!))) i++;
+  const first = String.fromCharCode(head[i] ?? 0);
+  if (first === '{' || first === '[') return 'geojson';
+  if (first === '<') {
+    const text = head.slice(i, Math.min(head.length, i + 512)).toString('utf8').toLowerCase();
+    if (text.includes('<kml')) return 'kml';
+    if (text.includes('<gpx')) return 'gpx';
+  }
+  return null;
+}
+
+/**
+ * Detect the source format from the filename, with a fallback to byte-sniffing
+ * the head of the file. Finder's de-dup rename ("Tracks (2)") strips the
+ * extension, so extension-only detection breaks on common drag-and-drop flows.
+ */
+export function detectFormat(filename: string, head?: Buffer): SourceFormat {
+  // Strip a trailing " (N)" before re-checking the extension.
+  const cleaned = filename.replace(/\s*\(\d+\)\s*$/, '');
+  const fromExt = extensionFormat(cleaned) ?? extensionFormat(filename);
+  if (fromExt) return fromExt;
+  if (head) {
+    const fromBytes = sniffFormat(head);
+    if (fromBytes) return fromBytes;
+  }
   throw new Error(`Unsupported file type: ${filename}`);
 }
 
