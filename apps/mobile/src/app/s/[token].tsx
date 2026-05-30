@@ -40,6 +40,7 @@ import {
   type Track,
   type TrackPoint,
 } from '@/lib/storage';
+import { saveMapOffline, loadOfflineMap, removeMapOffline } from '@/lib/offline';
 import { PinSheet } from '@/components/pin-sheet';
 import { MeasureSheet } from '@/components/measure-sheet';
 import { TrackSheet } from '@/components/track-sheet';
@@ -150,10 +151,25 @@ export default function SharedMap() {
   const [nowTick, setNowTick] = useState(Date.now());
   const subRef = useRef<Location.LocationSubscription | null>(null);
 
+  // Offline pack.
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [offlineProgress, setOfflineProgress] = useState<number | null>(null); // 0..100 while downloading, else null
+  const [offlineError, setOfflineError] = useState<string | null>(null);
+
   // Fetch shared map + load saved annotations + record in recents.
+  // Prefer the locally-cached copy if there is one — works without coverage.
   useEffect(() => {
     (async () => {
       try {
+        const local = await loadOfflineMap(token);
+        if (local) {
+          setSpec(local.spec);
+          setName(local.name);
+          setOfflineSaved(true);
+          // Refresh the recents entry async, with no network requirement.
+          void saveRecent({ token, name: local.name, openedAt: Date.now() });
+          return;
+        }
         const res = await fetch(`${API_BASE}/share/${token}`);
         if (!res.ok) throw new Error('not found');
         const data = (await res.json()) as { map: { name: string; spec: MapSpec } };
@@ -196,6 +212,9 @@ export default function SharedMap() {
       setShowLocation(status === 'granted');
     })();
   }, []);
+
+  // (offlineSaved is set above by the spec-load effect when we have a cached
+  // copy on disk — no separate poll needed.)
 
   async function persist(next: { pins?: Pin[]; measurements?: Measurement[]; tracks?: Track[] }) {
     const p = next.pins ?? pins;
@@ -354,6 +373,32 @@ export default function SharedMap() {
     setTrackStartAt(null);
     setPendingTrack(null);
     setTool('pan');
+  }
+
+  // ── Offline cache (file-based: spec + each source's GeoJSON) ─────────────
+  async function saveOffline() {
+    if (offlineProgress !== null) return;
+    setOfflineError(null);
+    setOfflineProgress(0);
+    try {
+      await saveMapOffline(token, (p) =>
+        setOfflineProgress(Math.round(p.ratio * 100)),
+      );
+      setOfflineSaved(true);
+      setOfflineProgress(null);
+    } catch (e) {
+      setOfflineError(e instanceof Error ? e.message : 'Download failed');
+      setOfflineProgress(null);
+    }
+  }
+
+  async function removeOffline() {
+    try {
+      await removeMapOffline(token);
+    } catch {
+      // ignore — best-effort cleanup
+    }
+    setOfflineSaved(false);
   }
 
   const draftFC = useMemo(() => ringFeatureCollection(draftVertices), [draftVertices]);
@@ -572,6 +617,26 @@ export default function SharedMap() {
         </Pressable>
 
         <Pressable
+          onPress={() => (offlineSaved ? void removeOffline() : void saveOffline())}
+          disabled={offlineProgress !== null}
+          style={({ pressed }) => [
+            styles.toolBtn,
+            offlineSaved && [styles.toolBtnActive, { backgroundColor: C.accent }],
+            offlineProgress !== null && { opacity: 0.6 },
+            pressed && offlineProgress === null && { opacity: 0.85 },
+          ]}
+          accessibilityLabel={offlineSaved ? 'Saved offline — tap to remove' : 'Save map for offline'}
+        >
+          <SymbolView
+            name={offlineSaved ? 'checkmark.icloud.fill' : 'icloud.and.arrow.down'}
+            size={20}
+            tintColor={offlineSaved ? '#fff' : C.accent}
+            weight="semibold"
+            resizeMode="scaleAspectFit"
+          />
+        </Pressable>
+
+        <Pressable
           style={({ pressed }) => [styles.toolBtn, pressed && { opacity: 0.85 }]}
           onPress={recenter}
           accessibilityLabel="Recenter on my location"
@@ -579,6 +644,22 @@ export default function SharedMap() {
           <SymbolView name="location.fill" size={20} tintColor={C.accent} weight="semibold" resizeMode="scaleAspectFit" />
         </Pressable>
       </View>
+
+      {/* offline download progress banner */}
+      {offlineProgress !== null && (
+        <View style={[styles.banner, { backgroundColor: C.accent, top: 56 }]} pointerEvents="none">
+          <SymbolView name="icloud.and.arrow.down" size={14} tintColor="#fff" weight="semibold" resizeMode="scaleAspectFit" />
+          <Text style={styles.bannerText}>
+            Saving offline · {offlineProgress}%
+          </Text>
+        </View>
+      )}
+      {offlineError && (
+        <View style={[styles.banner, { backgroundColor: C.red, top: 56 }]} pointerEvents="none">
+          <SymbolView name="exclamationmark.triangle.fill" size={14} tintColor="#fff" weight="semibold" resizeMode="scaleAspectFit" />
+          <Text style={styles.bannerText}>{offlineError}</Text>
+        </View>
+      )}
 
       {/* measure action bar (bottom) */}
       {tool === 'measure' && draftVertices.length > 0 && (

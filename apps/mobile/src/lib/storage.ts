@@ -45,6 +45,20 @@ export interface MapAnnotations {
   tracks: Track[];
 }
 
+/**
+ * A map whose spec + every source's GeoJSON have been saved to local files.
+ * `dir` is the on-disk folder (under FileSystem.documentDirectory) holding:
+ *   spec.json          — the MapSpec, with source URLs already rewritten to file://
+ *   source-<id>.geojson — the converted GeoJSON for each source
+ */
+export interface OfflineMap {
+  token: string;
+  name: string;
+  dir: string;
+  sizeBytes: number;
+  savedAt: number;
+}
+
 const RECENTS_KEY = 'recents';
 const annotationsKey = (token: string) => `map:${token}`;
 const RECENTS_CAP = 50;
@@ -104,6 +118,36 @@ export async function getAnnotations(token: string): Promise<MapAnnotations> {
 
 export async function saveAnnotations(token: string, m: MapAnnotations): Promise<void> {
   await writeJSON(annotationsKey(token), m);
+}
+
+// ---------------------------------------------------------------------------
+// Offline maps — set of tokens whose tiles are downloaded via OfflineManager.
+// We store the MapLibre-assigned pack id so we can find/delete the pack later.
+// ---------------------------------------------------------------------------
+
+const OFFLINE_KEY = 'offlineMaps';
+
+export function getOfflineMaps(): Promise<OfflineMap[]> {
+  return readJSON<OfflineMap[]>(OFFLINE_KEY, []);
+}
+
+export async function getOfflineMap(token: string): Promise<OfflineMap | undefined> {
+  const all = await getOfflineMaps();
+  return all.find((o) => o.token === token);
+}
+
+export async function addOfflineMap(om: OfflineMap): Promise<void> {
+  const all = await getOfflineMaps();
+  const without = all.filter((o) => o.token !== om.token);
+  await writeJSON(OFFLINE_KEY, [om, ...without]);
+}
+
+export async function removeOfflineMap(token: string): Promise<void> {
+  const all = await getOfflineMaps();
+  await writeJSON(
+    OFFLINE_KEY,
+    all.filter((o) => o.token !== token),
+  );
 }
 
 // ---------------------------------------------------------------------------
