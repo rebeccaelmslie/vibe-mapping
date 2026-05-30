@@ -40,7 +40,7 @@ import {
   type Track,
   type TrackPoint,
 } from '@/lib/storage';
-import { loadOfflineMap } from '@/lib/offline';
+import { loadOfflineMap, getOfflineTilesDir } from '@/lib/offline';
 import { PinSheet } from '@/components/pin-sheet';
 import { MeasureSheet } from '@/components/measure-sheet';
 import { TrackSheet } from '@/components/track-sheet';
@@ -133,6 +133,9 @@ export default function SharedMap() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showLocation, setShowLocation] = useState(false);
+  // Set when an imported `.vibemap` has a local tile pack — the basemap then
+  // reads from disk instead of LINZ/MapTiler.
+  const [tilesDir, setTilesDir] = useState<string | null>(null);
 
   // Field-tool state.
   const [tool, setTool] = useState<ToolMode>('pan');
@@ -161,6 +164,9 @@ export default function SharedMap() {
         if (local) {
           setSpec(local.spec);
           setName(local.name);
+          // Imported `.vibemap` packs bring their own tile pyramid — point the
+          // renderer at it so the basemap works without network.
+          setTilesDir(await getOfflineTilesDir(token));
           // Refresh the recents entry async, with no network requirement.
           void saveRecent({ token, name: local.name, openedAt: Date.now() });
           return;
@@ -405,6 +411,7 @@ export default function SharedMap() {
     mapSpecToStyle(spec, {
       maptilerKey: MAPTILER_KEY,
       linzKey: LINZ_KEY || undefined,
+      offlineTilesDir: tilesDir ?? undefined,
     }),
   );
 

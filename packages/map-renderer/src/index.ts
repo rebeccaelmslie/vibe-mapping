@@ -16,6 +16,12 @@ export interface RenderOptions {
   maptilerKey: string;
   /** When set, switches the `aerial` basemap to LINZ NZ aerial imagery. */
   linzKey?: string;
+  /**
+   * When set (e.g. by a `.vibemap` import), the basemap source reads tiles
+   * from this local directory instead of a remote provider. Format:
+   * `file:///abs/path/to/tiles` — the renderer appends `/{z}/{x}/{y}.webp`.
+   */
+  offlineTilesDir?: string;
 }
 
 const BASEMAP_LAYER_ID = 'basemap';
@@ -163,6 +169,7 @@ export function mapSpecToStyle(spec: MapSpec, opts: RenderOptions): MapLibreStyl
     [BASEMAP_LAYER_ID]: basemapSource(spec.basemap, {
       maptilerKey: opts.maptilerKey,
       linzKey: opts.linzKey,
+      offlineTilesDir: opts.offlineTilesDir,
     }),
   };
   const sourceById = new Map<string, SpecSource>();

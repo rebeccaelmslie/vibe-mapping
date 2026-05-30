@@ -16,6 +16,13 @@ export interface BasemapKeys {
    * Get a key at https://basemaps.linz.govt.nz/login (free).
    */
   linzKey?: string;
+  /**
+   * Optional: base URI (`file://…`) of a local tile pack from a `.vibemap`
+   * import — e.g. `file:///…/offline/<token>/tiles`. When set, the basemap
+   * source switches to `<dir>/{z}/{x}/{y}.webp` and MapLibre Native reads
+   * tiles straight from disk. Overrides aerial/streets/hybrid.
+   */
+  offlineTilesDir?: string;
 }
 
 // MapTiler raster tile endpoints. Raster (rather than vector style JSON) keeps
@@ -33,6 +40,17 @@ const LINZ_ATTRIBUTION =
   '© <a href="https://www.linz.govt.nz/">Toitū Te Whenua LINZ</a> · CC BY 4.0';
 
 export function basemapSource(basemap: Basemap, keys: BasemapKeys): RasterSource {
+  // Local tile pack (from a `.vibemap` import) wins over everything else.
+  if (keys.offlineTilesDir) {
+    const base = keys.offlineTilesDir.replace(/\/$/, '');
+    return {
+      type: 'raster',
+      tiles: [`${base}/{z}/{x}/{y}.webp`],
+      tileSize: 256,
+      attribution: LINZ_ATTRIBUTION,
+      maxzoom: 22,
+    };
+  }
   // LINZ aerial is the preferred NZ-quality basemap when we have a key.
   if (basemap === 'aerial' && keys.linzKey) {
     return {

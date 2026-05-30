@@ -9,7 +9,27 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.rebelm.vibe-mapping-mobile"
+      "bundleIdentifier": "com.rebelm.vibe-mapping-mobile",
+      "infoPlist": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Vibe field map",
+            "LSItemContentTypes": ["com.rebelm.vibemapping.vibemap"],
+            "LSHandlerRank": "Owner"
+          }
+        ],
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.rebelm.vibemapping.vibemap",
+            "UTTypeDescription": "Vibe field map",
+            "UTTypeConformsTo": ["public.zip-archive", "public.data"],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": ["vibemap"],
+              "public.mime-type": ["application/vnd.vibe.vibemap+zip"]
+            }
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {

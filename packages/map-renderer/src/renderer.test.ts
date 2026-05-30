@@ -162,6 +162,24 @@ describe('mapSpecToStyle', () => {
     }
   });
 
+  it('offlineTilesDir overrides everything with a file:// basemap source', () => {
+    const spec: MapSpec = mapSpec.parse({
+      id: 'm',
+      name: 'offline',
+      basemap: 'aerial',
+      initialView: { center: [174, -41] },
+    });
+    const style = mapSpecToStyle(spec, {
+      maptilerKey: 'MT',
+      linzKey: 'LINZ',
+      offlineTilesDir: 'file:///var/data/offline/tok/tiles',
+    });
+    const bm = style.sources.basemap;
+    if (bm?.type === 'raster') {
+      expect(bm.tiles[0]).toBe('file:///var/data/offline/tok/tiles/{z}/{x}/{y}.webp');
+    }
+  });
+
   it('streets stays on MapTiler even with a linzKey set', () => {
     const spec: MapSpec = mapSpec.parse({
       id: 'm',

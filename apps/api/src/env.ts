@@ -22,6 +22,9 @@ const schema = z.object({
   PORT: z.coerce.number().default(8787),
   // Base URL the browser/mobile use to reach THIS api (for building source URLs).
   PUBLIC_API_URL: z.string().url().default('http://localhost:8787'),
+  // LINZ Basemaps key — used server-side to fetch aerial tiles for
+  // `.vibemap` field-map exports. Free key at https://basemaps.linz.govt.nz/login.
+  LINZ_API_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof schema>;
