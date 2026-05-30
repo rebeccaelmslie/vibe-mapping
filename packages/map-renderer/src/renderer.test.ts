@@ -131,6 +131,51 @@ describe('mapSpecToStyle', () => {
     expect(Object.prototype.hasOwnProperty.call(style.sources.parcels!, 'attribution')).toBe(false);
   });
 
+  it('switches aerial to LINZ when a linzKey is provided', () => {
+    const spec: MapSpec = mapSpec.parse({
+      id: 'm',
+      name: 'NZ',
+      basemap: 'aerial',
+      initialView: { center: [174, -41] },
+    });
+    const style = mapSpecToStyle(spec, { maptilerKey: 'MT', linzKey: 'LINZ_KEY' });
+    const bm = style.sources.basemap;
+    expect(bm?.type).toBe('raster');
+    if (bm?.type === 'raster') {
+      expect(bm.tiles[0]).toContain('basemaps.linz.govt.nz');
+      expect(bm.tiles[0]).toContain('api=LINZ_KEY');
+      expect(bm.attribution).toContain('LINZ');
+    }
+  });
+
+  it('falls back to MapTiler aerial when no linzKey is set', () => {
+    const spec: MapSpec = mapSpec.parse({
+      id: 'm',
+      name: 'global',
+      basemap: 'aerial',
+      initialView: { center: [0, 0] },
+    });
+    const style = mapSpecToStyle(spec, { maptilerKey: 'MT' });
+    const bm = style.sources.basemap;
+    if (bm?.type === 'raster') {
+      expect(bm.tiles[0]).toContain('satellite-v2');
+    }
+  });
+
+  it('streets stays on MapTiler even with a linzKey set', () => {
+    const spec: MapSpec = mapSpec.parse({
+      id: 'm',
+      name: 's',
+      basemap: 'streets',
+      initialView: { center: [0, 0] },
+    });
+    const style = mapSpecToStyle(spec, { maptilerKey: 'MT', linzKey: 'LINZ' });
+    const bm = style.sources.basemap;
+    if (bm?.type === 'raster') {
+      expect(bm.tiles[0]).toContain('streets-v2');
+    }
+  });
+
   it('compiles a label template into a coalescing concat expression', () => {
     const spec: MapSpec = mapSpec.parse({
       id: 'm',

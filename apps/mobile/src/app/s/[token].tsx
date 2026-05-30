@@ -29,7 +29,7 @@ import {
   formatDuration,
   type MapSpec,
 } from '@vibe/shared';
-import { API_BASE, MAPTILER_KEY } from '@/lib/config';
+import { API_BASE, MAPTILER_KEY, LINZ_KEY } from '@/lib/config';
 import {
   getAnnotations,
   saveAnnotations,
@@ -207,6 +207,7 @@ export default function SharedMap() {
       setShowLocation(status === 'granted');
     })();
   }, []);
+
 
   async function persist(next: { pins?: Pin[]; measurements?: Measurement[]; tracks?: Track[] }) {
     const p = next.pins ?? pins;
@@ -400,7 +401,12 @@ export default function SharedMap() {
     );
   }
 
-  const style = JSON.stringify(mapSpecToStyle(spec, { maptilerKey: MAPTILER_KEY }));
+  const style = JSON.stringify(
+    mapSpecToStyle(spec, {
+      maptilerKey: MAPTILER_KEY,
+      linzKey: LINZ_KEY || undefined,
+    }),
+  );
 
   return (
     <View style={styles.fill}>

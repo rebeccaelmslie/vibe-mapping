@@ -5,12 +5,15 @@ import maplibregl, { type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { mapSpecToStyle } from '@vibe/map-renderer';
 import type { MapSpec } from '@vibe/shared';
-import { API_BASE, MAPTILER_KEY } from '@/lib/config';
+import { API_BASE, MAPTILER_KEY, LINZ_KEY } from '@/lib/config';
 import { useToast } from './toast';
 
 function toStyle(spec: MapSpec): StyleSpecification {
   // Our renderer emits a structurally-valid v8 style; cast to MapLibre's type.
-  return mapSpecToStyle(spec, { maptilerKey: MAPTILER_KEY }) as unknown as StyleSpecification;
+  return mapSpecToStyle(spec, {
+    maptilerKey: MAPTILER_KEY,
+    linzKey: LINZ_KEY || undefined,
+  }) as unknown as StyleSpecification;
 }
 
 interface SourceCounter {
@@ -158,7 +161,10 @@ export function MapView({ spec }: { spec: MapSpec }) {
         : [];
 
       // What WE handed to MapLibre (so we can see if the input was bad).
-      const intendedStyle = mapSpecToStyle(spec, { maptilerKey: MAPTILER_KEY });
+      const intendedStyle = mapSpecToStyle(spec, {
+        maptilerKey: MAPTILER_KEY,
+        linzKey: LINZ_KEY || undefined,
+      });
 
       const meta = {
         when: new Date().toISOString(),

@@ -14,6 +14,8 @@ import { basemapSource, glyphsUrl } from './basemap';
 
 export interface RenderOptions {
   maptilerKey: string;
+  /** When set, switches the `aerial` basemap to LINZ NZ aerial imagery. */
+  linzKey?: string;
 }
 
 const BASEMAP_LAYER_ID = 'basemap';
@@ -158,7 +160,10 @@ function labelLayer(layer: Layer, labels: LabelStyle, sourceLayer?: string): MlL
 /** Convert a MapSpec into a complete MapLibre GL style object. Pure. */
 export function mapSpecToStyle(spec: MapSpec, opts: RenderOptions): MapLibreStyle {
   const sources: Record<string, MlSource> = {
-    [BASEMAP_LAYER_ID]: basemapSource(spec.basemap, opts.maptilerKey),
+    [BASEMAP_LAYER_ID]: basemapSource(spec.basemap, {
+      maptilerKey: opts.maptilerKey,
+      linzKey: opts.linzKey,
+    }),
   };
   const sourceById = new Map<string, SpecSource>();
   for (const s of spec.sources) {
