@@ -23,9 +23,26 @@ export interface Measurement {
   createdAt: number;
 }
 
+export interface TrackPoint {
+  lng: number;
+  lat: number;
+  /** Epoch ms when the location was recorded. */
+  t: number;
+}
+
+export interface Track {
+  id: string;
+  label: string;
+  points: TrackPoint[];
+  distanceM: number;
+  durationSec: number;
+  createdAt: number;
+}
+
 export interface MapAnnotations {
   pins: Pin[];
   measurements: Measurement[];
+  tracks: Track[];
 }
 
 const RECENTS_KEY = 'recents';
@@ -70,15 +87,19 @@ export async function removeRecent(token: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Per-map annotations
+// Per-map annotations (pins for now; measurements + tracks land in later phases)
 // ---------------------------------------------------------------------------
 
-const EMPTY_ANNOTATIONS: MapAnnotations = { pins: [], measurements: [] };
+const EMPTY_ANNOTATIONS: MapAnnotations = { pins: [], measurements: [], tracks: [] };
 
 export async function getAnnotations(token: string): Promise<MapAnnotations> {
   const raw = await readJSON<Partial<MapAnnotations>>(annotationsKey(token), EMPTY_ANNOTATIONS);
-  // Backward-compat for saved blobs from earlier phases that lacked measurements.
-  return { pins: raw.pins ?? [], measurements: raw.measurements ?? [] };
+  // Backward-compat for saved blobs from earlier phases that lacked tracks/measurements.
+  return {
+    pins: raw.pins ?? [],
+    measurements: raw.measurements ?? [],
+    tracks: raw.tracks ?? [],
+  };
 }
 
 export async function saveAnnotations(token: string, m: MapAnnotations): Promise<void> {

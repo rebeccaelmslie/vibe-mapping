@@ -21,7 +21,14 @@ import {
 } from '@maplibre/maplibre-react-native';
 import { SymbolView } from 'expo-symbols';
 import { mapSpecToStyle } from '@vibe/map-renderer';
-import { polygonArea, formatArea, type MapSpec } from '@vibe/shared';
+import {
+  polygonArea,
+  formatArea,
+  polylineLength,
+  formatDistance,
+  formatDuration,
+  type MapSpec,
+} from '@vibe/shared';
 import { API_BASE, MAPTILER_KEY } from '@/lib/config';
 import {
   getAnnotations,
@@ -30,21 +37,25 @@ import {
   newId,
   type Pin,
   type Measurement,
+  type Track,
+  type TrackPoint,
 } from '@/lib/storage';
 import { PinSheet } from '@/components/pin-sheet';
 import { MeasureSheet } from '@/components/measure-sheet';
+import { TrackSheet } from '@/components/track-sheet';
 
 const C = {
   accent: '#0A84FF',
   red: '#FF453A',
   green: '#30D158',
+  orange: '#FF9F0A',
   text: '#FFFFFF',
   secondary: '#8E8E93',
   buttonBg: 'rgba(28,28,30,0.92)',
   buttonBorder: 'rgba(255,255,255,0.08)',
 };
 
-type ToolMode = 'pan' | 'pin' | 'measure';
+type ToolMode = 'pan' | 'pin' | 'measure' | 'track';
 type Coord = [number, number];
 
 function ringFeatureCollection(coords: Coord[]) {
@@ -83,6 +94,37 @@ function measurementsFeatureCollection(items: Measurement[]) {
   };
 }
 
+function trackFeatureCollection(coords: Coord[]) {
+  if (coords.length < 2) return { type: 'FeatureCollection' as const, features: [] };
+  return {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        geometry: { type: 'LineString' as const, coordinates: coords },
+        properties: {},
+      },
+    ],
+  };
+}
+
+function tracksFeatureCollection(tracks: Track[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: tracks
+      .filter((t) => t.points.length >= 2)
+      .map((t) => ({
+        type: 'Feature' as const,
+        id: t.id,
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: t.points.map((p) => [p.lng, p.lat] as Coord),
+        },
+        properties: { label: t.label, distance: t.distanceM },
+      })),
+  };
+}
+
 export default function SharedMap() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const cameraRef = useRef<CameraRef>(null);
@@ -98,6 +140,15 @@ export default function SharedMap() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [draftVertices, setDraftVertices] = useState<Coord[]>([]);
   const [pendingMeasure, setPendingMeasure] = useState<{ area: number } | null>(null);
+
+  // Track recording.
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [tracking, setTracking] = useState(false);
+  const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
+  const [trackStartAt, setTrackStartAt] = useState<number | null>(null);
+  const [pendingTrack, setPendingTrack] = useState<{ distance: number; duration: number } | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const subRef = useRef<Location.LocationSubscription | null>(null);
 
   // Fetch shared map + load saved annotations + record in recents.
   useEffect(() => {
@@ -120,8 +171,24 @@ export default function SharedMap() {
       const anns = await getAnnotations(token);
       setPins(anns.pins);
       setMeasurements(anns.measurements);
+      setTracks(anns.tracks);
     })();
   }, [token]);
+
+  // Tick once a second while recording so the live duration display updates.
+  useEffect(() => {
+    if (!tracking) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [tracking]);
+
+  // Always stop the location subscription when leaving the screen.
+  useEffect(() => {
+    return () => {
+      subRef.current?.remove();
+      subRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -130,12 +197,14 @@ export default function SharedMap() {
     })();
   }, []);
 
-  async function persist(next: { pins?: Pin[]; measurements?: Measurement[] }) {
+  async function persist(next: { pins?: Pin[]; measurements?: Measurement[]; tracks?: Track[] }) {
     const p = next.pins ?? pins;
     const m = next.measurements ?? measurements;
+    const tr = next.tracks ?? tracks;
     if (next.pins) setPins(next.pins);
     if (next.measurements) setMeasurements(next.measurements);
-    await saveAnnotations(token, { pins: p, measurements: m });
+    if (next.tracks) setTracks(next.tracks);
+    await saveAnnotations(token, { pins: p, measurements: m, tracks: tr });
   }
 
   async function recenter() {
@@ -204,6 +273,7 @@ export default function SharedMap() {
 
   function discardPending() {
     setPendingMeasure(null);
+    // Keep draftVertices so the user can adjust and re-finish.
   }
 
   function updatePin(next: Pin) {
@@ -213,12 +283,93 @@ export default function SharedMap() {
     void persist({ pins: pins.filter((p) => p.id !== id) });
   }
 
+  // ── Track recording ──────────────────────────────────────────────────────
+  async function startTracking() {
+    let { status } = await Location.getForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      ({ status } = await Location.requestForegroundPermissionsAsync());
+      if (status !== 'granted') return;
+      setShowLocation(true);
+    }
+    setTrackPoints([]);
+    setTrackStartAt(Date.now());
+    setTracking(true);
+    setNowTick(Date.now());
+    subRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        distanceInterval: 5,
+        timeInterval: 2000,
+      },
+      (loc) => {
+        const p: TrackPoint = {
+          lng: loc.coords.longitude,
+          lat: loc.coords.latitude,
+          t: loc.timestamp || Date.now(),
+        };
+        setTrackPoints((pts) => [...pts, p]);
+      },
+    );
+  }
+
+  function stopTracking() {
+    subRef.current?.remove();
+    subRef.current = null;
+    setTracking(false);
+    if (trackPoints.length < 2 || trackStartAt === null) {
+      // Nothing meaningful recorded — clean up silently.
+      setTrackPoints([]);
+      setTrackStartAt(null);
+      setTool('pan');
+      return;
+    }
+    const coords: Coord[] = trackPoints.map((p) => [p.lng, p.lat]);
+    const distance = polylineLength(coords);
+    const duration = Math.max(1, Math.floor((Date.now() - trackStartAt) / 1000));
+    setPendingTrack({ distance, duration });
+  }
+
+  function cancelTrack() {
+    subRef.current?.remove();
+    subRef.current = null;
+    setTracking(false);
+    setTrackPoints([]);
+    setTrackStartAt(null);
+    setPendingTrack(null);
+    setTool('pan');
+  }
+
+  function saveTrack(label: string) {
+    if (!pendingTrack || !trackStartAt) return;
+    const t: Track = {
+      id: newId('trk'),
+      label,
+      points: trackPoints,
+      distanceM: pendingTrack.distance,
+      durationSec: pendingTrack.duration,
+      createdAt: Date.now(),
+    };
+    void persist({ tracks: [...tracks, t] });
+    setTrackPoints([]);
+    setTrackStartAt(null);
+    setPendingTrack(null);
+    setTool('pan');
+  }
+
   const draftFC = useMemo(() => ringFeatureCollection(draftVertices), [draftVertices]);
   const savedFC = useMemo(() => measurementsFeatureCollection(measurements), [measurements]);
   const draftArea = useMemo(
     () => (draftVertices.length >= 3 ? polygonArea(draftVertices) : 0),
     [draftVertices],
   );
+  const tracksFC = useMemo(() => tracksFeatureCollection(tracks), [tracks]);
+  const trackDraftCoords = useMemo<Coord[]>(
+    () => trackPoints.map((p) => [p.lng, p.lat]),
+    [trackPoints],
+  );
+  const trackDraftFC = useMemo(() => trackFeatureCollection(trackDraftCoords), [trackDraftCoords]);
+  const liveDistance = useMemo(() => polylineLength(trackDraftCoords), [trackDraftCoords]);
+  const liveDuration = trackStartAt ? Math.floor((nowTick - trackStartAt) / 1000) : 0;
 
   if (error) {
     return (
@@ -251,6 +402,28 @@ export default function SharedMap() {
           pitch={spec.initialView.pitch}
         />
         {showLocation && <UserLocation />}
+
+        {/* Saved tracks */}
+        <GeoJSONSource id="tracks" data={tracksFC}>
+          <Layer
+            id="tracks-line"
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': C.orange, 'line-width': 3 }}
+          />
+        </GeoJSONSource>
+
+        {/* In-progress track */}
+        {trackDraftCoords.length >= 2 && (
+          <GeoJSONSource id="trackDraft" data={trackDraftFC}>
+            <Layer
+              id="trackDraft-line"
+              type="line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{ 'line-color': C.orange, 'line-width': 4 }}
+            />
+          </GeoJSONSource>
+        )}
 
         {/* Saved measurements */}
         <GeoJSONSource id="measurements" data={savedFC}>
@@ -329,6 +502,14 @@ export default function SharedMap() {
           </Text>
         </View>
       )}
+      {tracking && (
+        <View style={[styles.banner, { backgroundColor: C.orange }]} pointerEvents="none">
+          <View style={styles.recordDot} />
+          <Text style={styles.bannerText}>
+            {formatDuration(liveDuration)} · {formatDistance(liveDistance)}
+          </Text>
+        </View>
+      )}
 
       {/* tool buttons (right column, stacked) */}
       <View style={styles.tools}>
@@ -363,6 +544,31 @@ export default function SharedMap() {
           accessibilityLabel="Measure area"
         >
           <SymbolView name="ruler" size={22} tintColor={tool === 'measure' ? '#fff' : C.accent} weight="semibold" resizeMode="scaleAspectFit" />
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            if (tracking) stopTracking();
+            else {
+              cancelMeasure();
+              setTool('track');
+              void startTracking();
+            }
+          }}
+          style={({ pressed }) => [
+            styles.toolBtn,
+            tracking && [styles.toolBtnActive, { backgroundColor: C.orange, borderColor: C.orange }],
+            pressed && { opacity: 0.85 },
+          ]}
+          accessibilityLabel={tracking ? 'Stop recording track' : 'Start recording track'}
+        >
+          <SymbolView
+            name={tracking ? 'stop.fill' : 'figure.walk'}
+            size={tracking ? 18 : 22}
+            tintColor={tracking ? '#fff' : C.accent}
+            weight="semibold"
+            resizeMode="scaleAspectFit"
+          />
         </Pressable>
 
         <Pressable
@@ -405,6 +611,29 @@ export default function SharedMap() {
         </View>
       )}
 
+      {/* track action bar (bottom) */}
+      {tracking && (
+        <View style={styles.actionBar}>
+          <Pressable
+            onPress={cancelTrack}
+            style={({ pressed }) => [styles.barBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.barBtnText, { color: C.red }]}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={stopTracking}
+            style={({ pressed }) => [
+              styles.barBtn,
+              styles.barBtnStop,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <SymbolView name="stop.fill" size={14} tintColor="#fff" weight="semibold" resizeMode="scaleAspectFit" />
+            <Text style={[styles.barBtnText, { color: '#fff' }]}>Stop</Text>
+          </Pressable>
+        </View>
+      )}
+
       <PinSheet
         pin={editingPin}
         onClose={() => setEditingPin(null)}
@@ -419,6 +648,21 @@ export default function SharedMap() {
         vertexCount={draftVertices.length}
         onClose={discardPending}
         onSave={saveMeasurement}
+      />
+
+      <TrackSheet
+        open={pendingTrack !== null}
+        defaultLabel={`Track ${tracks.length + 1}`}
+        distanceM={pendingTrack?.distance ?? 0}
+        durationSec={pendingTrack?.duration ?? 0}
+        pointCount={trackPoints.length}
+        onClose={() => {
+          setPendingTrack(null);
+          setTrackPoints([]);
+          setTrackStartAt(null);
+          setTool('pan');
+        }}
+        onSave={saveTrack}
       />
     </View>
   );
@@ -474,7 +718,7 @@ const styles = StyleSheet.create({
   actionBar: {
     position: 'absolute',
     left: 14,
-    right: 70,
+    right: 70, // leave room for the right tool column
     bottom: 36,
     flexDirection: 'row',
     gap: 8,
@@ -498,5 +742,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   barBtnPrimary: { backgroundColor: C.green },
+  barBtnStop: { backgroundColor: C.orange },
   barBtnText: { color: C.text, fontSize: 14, fontWeight: '600' },
+  recordDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+  },
 });
