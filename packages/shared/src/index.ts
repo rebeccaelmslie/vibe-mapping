@@ -5,3 +5,4 @@ export * from './styled-value';
 export * from './map-spec';
 export * from './inspection';
 export * from './tools';
+export * from './area';

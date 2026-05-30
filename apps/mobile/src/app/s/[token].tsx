@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,14 @@ import {
   Camera,
   UserLocation,
   Marker,
+  GeoJSONSource,
+  Layer,
   type CameraRef,
   type PressEvent,
 } from '@maplibre/maplibre-react-native';
 import { SymbolView } from 'expo-symbols';
 import { mapSpecToStyle } from '@vibe/map-renderer';
-import type { MapSpec } from '@vibe/shared';
+import { polygonArea, formatArea, type MapSpec } from '@vibe/shared';
 import { API_BASE, MAPTILER_KEY } from '@/lib/config';
 import {
   getAnnotations,
@@ -27,19 +29,59 @@ import {
   saveRecent,
   newId,
   type Pin,
+  type Measurement,
 } from '@/lib/storage';
 import { PinSheet } from '@/components/pin-sheet';
+import { MeasureSheet } from '@/components/measure-sheet';
 
 const C = {
   accent: '#0A84FF',
   red: '#FF453A',
+  green: '#30D158',
   text: '#FFFFFF',
   secondary: '#8E8E93',
   buttonBg: 'rgba(28,28,30,0.92)',
   buttonBorder: 'rgba(255,255,255,0.08)',
 };
 
-type ToolMode = 'pan' | 'pin';
+type ToolMode = 'pan' | 'pin' | 'measure';
+type Coord = [number, number];
+
+function ringFeatureCollection(coords: Coord[]) {
+  if (coords.length === 0) {
+    return { type: 'FeatureCollection' as const, features: [] };
+  }
+  const closed: Coord[] =
+    coords.length >= 3 && (coords[0]![0] !== coords[coords.length - 1]![0] ||
+      coords[0]![1] !== coords[coords.length - 1]![1])
+      ? [...coords, coords[0]!]
+      : coords;
+  return {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        geometry: { type: 'Polygon' as const, coordinates: [closed] },
+        properties: {},
+      },
+    ],
+  };
+}
+
+function measurementsFeatureCollection(items: Measurement[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: items.map((m) => {
+      const ring = [...m.coordinates, m.coordinates[0]!];
+      return {
+        type: 'Feature' as const,
+        id: m.id,
+        geometry: { type: 'Polygon' as const, coordinates: [ring] },
+        properties: { label: m.label, area: m.areaM2 },
+      };
+    }),
+  };
+}
 
 export default function SharedMap() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -53,6 +95,9 @@ export default function SharedMap() {
   const [tool, setTool] = useState<ToolMode>('pan');
   const [pins, setPins] = useState<Pin[]>([]);
   const [editingPin, setEditingPin] = useState<Pin | null>(null);
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [draftVertices, setDraftVertices] = useState<Coord[]>([]);
+  const [pendingMeasure, setPendingMeasure] = useState<{ area: number } | null>(null);
 
   // Fetch shared map + load saved annotations + record in recents.
   useEffect(() => {
@@ -74,6 +119,7 @@ export default function SharedMap() {
     (async () => {
       const anns = await getAnnotations(token);
       setPins(anns.pins);
+      setMeasurements(anns.measurements);
     })();
   }, [token]);
 
@@ -84,9 +130,12 @@ export default function SharedMap() {
     })();
   }, []);
 
-  async function persistPins(next: Pin[]) {
-    setPins(next);
-    await saveAnnotations(token, { pins: next });
+  async function persist(next: { pins?: Pin[]; measurements?: Measurement[] }) {
+    const p = next.pins ?? pins;
+    const m = next.measurements ?? measurements;
+    if (next.pins) setPins(next.pins);
+    if (next.measurements) setMeasurements(next.measurements);
+    await saveAnnotations(token, { pins: p, measurements: m });
   }
 
   async function recenter() {
@@ -105,26 +154,71 @@ export default function SharedMap() {
   }
 
   function handleMapPress(event: NativeSyntheticEvent<PressEvent>) {
-    if (tool !== 'pin') return;
     const [lng, lat] = event.nativeEvent.lngLat;
-    const pin: Pin = {
-      id: newId('pin'),
-      lng,
-      lat,
-      name: `Pin ${pins.length + 1}`,
+    if (tool === 'pin') {
+      const pin: Pin = {
+        id: newId('pin'),
+        lng,
+        lat,
+        name: `Pin ${pins.length + 1}`,
+        createdAt: Date.now(),
+      };
+      void persist({ pins: [...pins, pin] });
+      setTool('pan');
+      return;
+    }
+    if (tool === 'measure') {
+      setDraftVertices((v) => [...v, [lng, lat]]);
+    }
+  }
+
+  function undoVertex() {
+    setDraftVertices((v) => v.slice(0, -1));
+  }
+
+  function cancelMeasure() {
+    setDraftVertices([]);
+    setTool('pan');
+  }
+
+  function finishMeasure() {
+    if (draftVertices.length < 3) return;
+    const area = polygonArea(draftVertices);
+    setPendingMeasure({ area });
+  }
+
+  function saveMeasurement(label: string) {
+    if (!pendingMeasure) return;
+    const m: Measurement = {
+      id: newId('mes'),
+      label,
+      coordinates: draftVertices,
+      areaM2: pendingMeasure.area,
       createdAt: Date.now(),
     };
-    void persistPins([...pins, pin]);
-    setTool('pan'); // single tap drops one pin; toggle again for more
+    void persist({ measurements: [...measurements, m] });
+    setDraftVertices([]);
+    setPendingMeasure(null);
+    setTool('pan');
+  }
+
+  function discardPending() {
+    setPendingMeasure(null);
   }
 
   function updatePin(next: Pin) {
-    void persistPins(pins.map((p) => (p.id === next.id ? next : p)));
+    void persist({ pins: pins.map((p) => (p.id === next.id ? next : p)) });
+  }
+  function deletePin(id: string) {
+    void persist({ pins: pins.filter((p) => p.id !== id) });
   }
 
-  function deletePin(id: string) {
-    void persistPins(pins.filter((p) => p.id !== id));
-  }
+  const draftFC = useMemo(() => ringFeatureCollection(draftVertices), [draftVertices]);
+  const savedFC = useMemo(() => measurementsFeatureCollection(measurements), [measurements]);
+  const draftArea = useMemo(
+    () => (draftVertices.length >= 3 ? polygonArea(draftVertices) : 0),
+    [draftVertices],
+  );
 
   if (error) {
     return (
@@ -157,6 +251,50 @@ export default function SharedMap() {
           pitch={spec.initialView.pitch}
         />
         {showLocation && <UserLocation />}
+
+        {/* Saved measurements */}
+        <GeoJSONSource id="measurements" data={savedFC}>
+          <Layer
+            id="measurements-fill"
+            type="fill"
+            paint={{ 'fill-color': C.green, 'fill-opacity': 0.18 }}
+          />
+          <Layer
+            id="measurements-line"
+            type="line"
+            paint={{ 'line-color': C.green, 'line-width': 2 }}
+          />
+        </GeoJSONSource>
+
+        {/* In-progress measurement */}
+        {draftVertices.length > 0 && (
+          <GeoJSONSource id="draft" data={draftFC}>
+            <Layer
+              id="draft-fill"
+              type="fill"
+              paint={{ 'fill-color': C.accent, 'fill-opacity': 0.15 }}
+            />
+            <Layer
+              id="draft-line"
+              type="line"
+              layout={{ 'line-cap': 'round' }}
+              paint={{
+                'line-color': C.accent,
+                'line-width': 2.5,
+                'line-dasharray': [3, 2],
+              }}
+            />
+          </GeoJSONSource>
+        )}
+
+        {/* Draft vertices as small markers so they're tap-aware later */}
+        {draftVertices.map((v, i) => (
+          <Marker key={`v${i}`} id={`v${i}`} lngLat={v} anchor="center">
+            <View style={styles.vertex} />
+          </Marker>
+        ))}
+
+        {/* Pins */}
         {pins.map((p) => (
           <Marker key={p.id} id={p.id} lngLat={[p.lng, p.lat]} anchor="bottom">
             <Pressable onPress={() => setEditingPin(p)} hitSlop={10} style={styles.pinHit}>
@@ -175,21 +313,30 @@ export default function SharedMap() {
       {/* tool mode banner */}
       {tool === 'pin' && (
         <View style={styles.banner} pointerEvents="none">
-          <SymbolView
-            name="mappin"
-            size={14}
-            tintColor="#fff"
-            weight="semibold"
-            resizeMode="scaleAspectFit"
-          />
+          <SymbolView name="mappin" size={14} tintColor="#fff" weight="semibold" resizeMode="scaleAspectFit" />
           <Text style={styles.bannerText}>Tap to drop a pin</Text>
         </View>
       )}
+      {tool === 'measure' && (
+        <View style={[styles.banner, { backgroundColor: C.green }]} pointerEvents="none">
+          <SymbolView name="ruler" size={14} tintColor="#fff" weight="semibold" resizeMode="scaleAspectFit" />
+          <Text style={styles.bannerText}>
+            {draftVertices.length === 0
+              ? 'Tap to start a measurement'
+              : draftVertices.length < 3
+                ? `${draftVertices.length} vertex — keep tapping`
+                : `${formatArea(draftArea)} — tap Done to save`}
+          </Text>
+        </View>
+      )}
 
-      {/* tool buttons (right column, stacked above recenter) */}
+      {/* tool buttons (right column, stacked) */}
       <View style={styles.tools}>
         <Pressable
-          onPress={() => setTool((t) => (t === 'pin' ? 'pan' : 'pin'))}
+          onPress={() => {
+            cancelMeasure();
+            setTool((t) => (t === 'pin' ? 'pan' : 'pin'));
+          }}
           style={({ pressed }) => [
             styles.toolBtn,
             tool === 'pin' && styles.toolBtnActive,
@@ -197,34 +344,81 @@ export default function SharedMap() {
           ]}
           accessibilityLabel="Drop a pin"
         >
-          <SymbolView
-            name="mappin"
-            size={22}
-            tintColor={tool === 'pin' ? '#fff' : C.accent}
-            weight="semibold"
-            resizeMode="scaleAspectFit"
-          />
+          <SymbolView name="mappin" size={22} tintColor={tool === 'pin' ? '#fff' : C.accent} weight="semibold" resizeMode="scaleAspectFit" />
         </Pressable>
+
+        <Pressable
+          onPress={() => {
+            if (tool === 'measure') cancelMeasure();
+            else {
+              setDraftVertices([]);
+              setTool('measure');
+            }
+          }}
+          style={({ pressed }) => [
+            styles.toolBtn,
+            tool === 'measure' && [styles.toolBtnActive, { backgroundColor: C.green, borderColor: C.green }],
+            pressed && { opacity: 0.85 },
+          ]}
+          accessibilityLabel="Measure area"
+        >
+          <SymbolView name="ruler" size={22} tintColor={tool === 'measure' ? '#fff' : C.accent} weight="semibold" resizeMode="scaleAspectFit" />
+        </Pressable>
+
         <Pressable
           style={({ pressed }) => [styles.toolBtn, pressed && { opacity: 0.85 }]}
           onPress={recenter}
           accessibilityLabel="Recenter on my location"
         >
-          <SymbolView
-            name="location.fill"
-            size={20}
-            tintColor={C.accent}
-            weight="semibold"
-            resizeMode="scaleAspectFit"
-          />
+          <SymbolView name="location.fill" size={20} tintColor={C.accent} weight="semibold" resizeMode="scaleAspectFit" />
         </Pressable>
       </View>
+
+      {/* measure action bar (bottom) */}
+      {tool === 'measure' && draftVertices.length > 0 && (
+        <View style={styles.actionBar}>
+          <Pressable
+            onPress={undoVertex}
+            style={({ pressed }) => [styles.barBtn, pressed && { opacity: 0.7 }]}
+          >
+            <SymbolView name="arrow.uturn.backward" size={16} tintColor={C.text} weight="semibold" resizeMode="scaleAspectFit" />
+            <Text style={styles.barBtnText}>Undo</Text>
+          </Pressable>
+          <Pressable
+            onPress={cancelMeasure}
+            style={({ pressed }) => [styles.barBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.barBtnText, { color: C.red }]}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={finishMeasure}
+            disabled={draftVertices.length < 3}
+            style={({ pressed }) => [
+              styles.barBtn,
+              styles.barBtnPrimary,
+              draftVertices.length < 3 && { opacity: 0.4 },
+              pressed && draftVertices.length >= 3 && { opacity: 0.85 },
+            ]}
+          >
+            <Text style={[styles.barBtnText, { color: '#fff' }]}>Done</Text>
+          </Pressable>
+        </View>
+      )}
 
       <PinSheet
         pin={editingPin}
         onClose={() => setEditingPin(null)}
         onSave={updatePin}
         onDelete={deletePin}
+      />
+
+      <MeasureSheet
+        open={pendingMeasure !== null}
+        defaultLabel={`Area ${measurements.length + 1}`}
+        areaM2={pendingMeasure?.area ?? 0}
+        vertexCount={draftVertices.length}
+        onClose={discardPending}
+        onSave={saveMeasurement}
       />
     </View>
   );
@@ -269,4 +463,40 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   pinHit: { padding: 2 },
+  vertex: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: C.accent,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  actionBar: {
+    position: 'absolute',
+    left: 14,
+    right: 70,
+    bottom: 36,
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: C.buttonBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.buttonBorder,
+    borderRadius: 14,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  barBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  barBtnPrimary: { backgroundColor: C.green },
+  barBtnText: { color: C.text, fontSize: 14, fontWeight: '600' },
 });
