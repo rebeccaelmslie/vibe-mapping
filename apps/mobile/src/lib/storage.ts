@@ -136,6 +136,11 @@ export async function getOfflineMap(token: string): Promise<OfflineMap | undefin
   return all.find((o) => o.token === token);
 }
 
+export async function getOfflineTokenSet(): Promise<Set<string>> {
+  const all = await getOfflineMaps();
+  return new Set(all.map((o) => o.token));
+}
+
 export async function addOfflineMap(om: OfflineMap): Promise<void> {
   const all = await getOfflineMaps();
   const without = all.filter((o) => o.token !== om.token);

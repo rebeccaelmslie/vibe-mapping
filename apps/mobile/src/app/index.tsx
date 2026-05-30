@@ -12,7 +12,8 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { extractToken } from '@/lib/config';
-import { getRecents, removeRecent, type RecentMap } from '@/lib/storage';
+import { getRecents, removeRecent, getOfflineTokenSet, type RecentMap } from '@/lib/storage';
+import { saveMapOffline, removeMapOffline } from '@/lib/offline';
 
 const C = {
   bg: '#0a0a0a',
@@ -44,11 +45,20 @@ export default function Home() {
   const router = useRouter();
   const [input, setInput] = useState('');
   const [recents, setRecents] = useState<RecentMap[] | null>(null);
+  const [offlineSet, setOfflineSet] = useState<Set<string>>(new Set());
+  // tokens currently downloading -> last reported 0..100 progress
+  const [downloading, setDownloading] = useState<Record<string, number>>({});
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getRecents().then((list) => active && setRecents(list));
+      (async () => {
+        const [r, s] = await Promise.all([getRecents(), getOfflineTokenSet()]);
+        if (active) {
+          setRecents(r);
+          setOfflineSet(s);
+        }
+      })();
       return () => {
         active = false;
       };
@@ -79,6 +89,51 @@ export default function Home() {
         },
       },
     ]);
+  }
+
+  async function toggleOffline(token: string) {
+    if (token in downloading) return; // mid-download, ignore taps
+    if (offlineSet.has(token)) {
+      // Already saved — remove with a quick confirm.
+      Alert.alert('Remove offline copy?', 'You can re-save it any time.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeMapOffline(token);
+              setOfflineSet((s) => {
+                const next = new Set(s);
+                next.delete(token);
+                return next;
+              });
+            } catch (e) {
+              Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
+            }
+          },
+        },
+      ]);
+      return;
+    }
+    setDownloading((d) => ({ ...d, [token]: 0 }));
+    try {
+      await saveMapOffline(token, (p) =>
+        setDownloading((d) => ({ ...d, [token]: Math.round(p.ratio * 100) })),
+      );
+      setOfflineSet((s) => new Set(s).add(token));
+    } catch (e) {
+      Alert.alert(
+        'Could not save offline',
+        e instanceof Error ? e.message : 'Check the connection to the api and try again.',
+      );
+    } finally {
+      setDownloading((d) => {
+        const next = { ...d };
+        delete next[token];
+        return next;
+      });
+    }
   }
 
   const inputValid = input.trim().length > 0;
@@ -164,37 +219,68 @@ export default function Home() {
       ListHeaderComponent={Header}
       ListEmptyComponent={Empty}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
-      renderItem={({ item }) => (
-        <Pressable
-          onPress={() => open(item.token)}
-          onLongPress={() => confirmRemove(item)}
-          style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
-        >
-          <View style={styles.tileIconWrap}>
+      renderItem={({ item }) => {
+        const isSaved = offlineSet.has(item.token);
+        const pct = downloading[item.token];
+        const isDownloading = pct !== undefined;
+        return (
+          <Pressable
+            onPress={() => open(item.token)}
+            onLongPress={() => confirmRemove(item)}
+            style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
+          >
+            <View style={styles.tileIconWrap}>
+              <SymbolView
+                name="map.fill"
+                size={22}
+                tintColor={C.accent}
+                resizeMode="scaleAspectFit"
+              />
+            </View>
+            <View style={styles.tileText}>
+              <Text style={styles.tileName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.tileMeta} numberOfLines={1}>
+                {isDownloading
+                  ? `Saving offline · ${pct}%`
+                  : isSaved
+                    ? 'Saved on this phone'
+                    : `Opened ${timeAgo(item.openedAt)}`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => toggleOffline(item.token)}
+              hitSlop={8}
+              disabled={isDownloading}
+              style={({ pressed }) => [
+                styles.offlineBtn,
+                pressed && !isDownloading && { opacity: 0.6 },
+              ]}
+              accessibilityLabel={isSaved ? 'Saved offline; tap to remove' : 'Save offline'}
+            >
+              {isDownloading ? (
+                <Text style={styles.pct}>{pct}%</Text>
+              ) : (
+                <SymbolView
+                  name={isSaved ? 'checkmark.icloud.fill' : 'icloud.and.arrow.down'}
+                  size={22}
+                  tintColor={isSaved ? C.accent : C.secondary}
+                  weight="semibold"
+                  resizeMode="scaleAspectFit"
+                />
+              )}
+            </Pressable>
             <SymbolView
-              name="map.fill"
-              size={22}
-              tintColor={C.accent}
+              name="chevron.right"
+              size={14}
+              tintColor={C.tertiary}
+              weight="semibold"
               resizeMode="scaleAspectFit"
             />
-          </View>
-          <View style={styles.tileText}>
-            <Text style={styles.tileName} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text style={styles.tileMeta} numberOfLines={1}>
-              Opened {timeAgo(item.openedAt)}
-            </Text>
-          </View>
-          <SymbolView
-            name="chevron.right"
-            size={14}
-            tintColor={C.tertiary}
-            weight="semibold"
-            resizeMode="scaleAspectFit"
-          />
-        </Pressable>
-      )}
+          </Pressable>
+        );
+      }}
     />
   );
 }
@@ -246,7 +332,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    gap: 14,
+    gap: 12,
   },
   tilePressed: { backgroundColor: C.cardPressed },
   tileIconWrap: {
@@ -260,6 +346,13 @@ const styles = StyleSheet.create({
   tileText: { flex: 1, gap: 2 },
   tileName: { color: C.text, fontSize: 17, fontWeight: '600' },
   tileMeta: { color: C.secondary, fontSize: 13 },
+  offlineBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pct: { color: C.accent, fontSize: 12, fontWeight: '700' },
 
   separator: { height: 10 },
 
