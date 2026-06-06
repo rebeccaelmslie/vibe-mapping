@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vibe Mapping",
     "slug": "vibe-mapping-mobile",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "vibemap",
@@ -14,7 +14,9 @@
         "CFBundleDocumentTypes": [
           {
             "CFBundleTypeName": "Vibe field map",
-            "LSItemContentTypes": ["com.rebelm.vibemapping.vibemap"],
+            "LSItemContentTypes": [
+              "com.rebelm.vibemapping.vibemap"
+            ],
             "LSHandlerRank": "Owner"
           }
         ],
@@ -22,10 +24,17 @@
           {
             "UTTypeIdentifier": "com.rebelm.vibemapping.vibemap",
             "UTTypeDescription": "Vibe field map",
-            "UTTypeConformsTo": ["public.zip-archive", "public.data"],
+            "UTTypeConformsTo": [
+              "public.zip-archive",
+              "public.data"
+            ],
             "UTTypeTagSpecification": {
-              "public.filename-extension": ["vibemap"],
-              "public.mime-type": ["application/vnd.vibe.vibemap+zip"]
+              "public.filename-extension": [
+                "vibemap"
+              ],
+              "public.mime-type": [
+                "application/vnd.vibe.vibemap+zip"
+              ]
             }
           }
         ]
@@ -71,6 +80,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "99e6a8a5-c53e-4581-ba99-02cefe1128ac"
+      }
+    },
+    "owner": "rebelm"
   }
 }

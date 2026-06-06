@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 18.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m-medium",
+        "image": "latest"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://api-not-configured.invalid",
+        "EXPO_PUBLIC_MAPTILER_API_KEY": "",
+        "EXPO_PUBLIC_LINZ_API_KEY": ""
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "PLACEHOLDER_FILL_AFTER_APP_CREATE"
+      }
+    }
+  }
+}
