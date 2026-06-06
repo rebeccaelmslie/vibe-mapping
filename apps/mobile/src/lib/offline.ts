@@ -92,18 +92,30 @@ export async function saveMapOffline(
 
 /**
  * If the map has been saved offline AND its spec.json is still on disk,
- * return the saved {name, spec} (with file:// source URLs); otherwise null.
+ * return the saved {name, spec, manifest}. `manifest` is non-null only
+ * for `.vibemap` imports (the legacy live-link offline cache has no
+ * manifest.json). Returns null when there's no offline copy at all.
  */
 export async function loadOfflineMap(
   token: string,
-): Promise<{ name: string; spec: MapSpec } | null> {
+): Promise<{ name: string; spec: MapSpec; manifest: VibemapManifest | null } | null> {
   const record = await getOfflineMap(token);
   if (!record) return null;
   const f = specFile(token);
   if (!f.exists) return null;
   const text = await f.text();
   const spec = JSON.parse(text) as MapSpec;
-  return { name: record.name, spec };
+
+  let manifest: VibemapManifest | null = null;
+  const mf = new File(mapDir(token), 'manifest.json');
+  if (mf.exists) {
+    try {
+      manifest = JSON.parse(await mf.text()) as VibemapManifest;
+    } catch {
+      // Corrupt manifest is non-fatal — the chrome falls back to today's date.
+    }
+  }
+  return { name: record.name, spec, manifest };
 }
 
 /** Delete the on-disk files and remove the storage record. */

@@ -45,7 +45,14 @@ export function MapView({ spec }: { spec: MapSpec }) {
       // Required so /debug/report can capture the canvas via toDataURL.
       preserveDrawingBuffer: true,
     });
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+      'top-right',
+    );
+    map.addControl(
+      new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }),
+      'bottom-left',
+    );
 
     // Surface silent MapLibre failures (CORS, 404, malformed GeoJSON, tiles).
     // Use console.warn (not error) so Next's dev overlay doesn't catch it as

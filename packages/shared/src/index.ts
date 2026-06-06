@@ -7,3 +7,4 @@ export * from './inspection';
 export * from './tools';
 export * from './area';
 export * from './distance';
+export * from './legend';

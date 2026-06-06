@@ -40,10 +40,11 @@ import {
   type Track,
   type TrackPoint,
 } from '@/lib/storage';
-import { loadOfflineMap, getOfflineTilesDir } from '@/lib/offline';
+import { loadOfflineMap, getOfflineTilesDir, type VibemapManifest } from '@/lib/offline';
 import { PinSheet } from '@/components/pin-sheet';
 import { MeasureSheet } from '@/components/measure-sheet';
 import { TrackSheet } from '@/components/track-sheet';
+import { MapChrome } from '@/components/MapChrome';
 
 const C = {
   accent: '#0A84FF',
@@ -136,6 +137,10 @@ export default function SharedMap() {
   // Set when an imported `.vibemap` has a local tile pack — the basemap then
   // reads from disk instead of LINZ/MapTiler.
   const [tilesDir, setTilesDir] = useState<string | null>(null);
+  const [manifest, setManifest] = useState<VibemapManifest | null>(null);
+  // Cartographic chrome (title strip + legend drawer). Toggle via the info
+  // button in the tools column; off gives a full-bleed map view.
+  const [chromeVisible, setChromeVisible] = useState(true);
 
   // Field-tool state.
   const [tool, setTool] = useState<ToolMode>('pan');
@@ -164,6 +169,7 @@ export default function SharedMap() {
         if (local) {
           setSpec(local.spec);
           setName(local.name);
+          setManifest(local.manifest);
           // Imported `.vibemap` packs bring their own tile pyramid — point the
           // renderer at it so the basemap works without network.
           setTilesDir(await getOfflineTilesDir(token));
@@ -418,7 +424,18 @@ export default function SharedMap() {
   return (
     <View style={styles.fill}>
       <Stack.Screen options={{ title: name || 'Map' }} />
-      <MapView style={styles.fill} mapStyle={style} onPress={handleMapPress}>
+      <MapView
+        style={styles.fill}
+        mapStyle={style}
+        onPress={handleMapPress}
+        compass
+        compassPosition={{ top: 96, right: 16 }}
+        compassHiddenFacingNorth
+        scaleBar
+        scaleBarPosition={{ bottom: 96, left: 16 }}
+        attribution={false}
+        logo={false}
+      >
         <Camera
           ref={cameraRef}
           center={spec.initialView.center}
@@ -507,6 +524,15 @@ export default function SharedMap() {
           </Marker>
         ))}
       </MapView>
+
+      {/* Cartographic chrome: title strip + legend drawer. Renders above the
+          map and below the tool sheets. Toggle via the info button. */}
+      <MapChrome
+        spec={spec}
+        title={name || 'Map'}
+        exportedAt={manifest?.exportedAt}
+        visible={chromeVisible}
+      />
 
       {/* tool mode banner */}
       {tool === 'pin' && (
@@ -602,6 +628,24 @@ export default function SharedMap() {
           accessibilityLabel="Recenter on my location"
         >
           <SymbolView name="location.fill" size={20} tintColor={C.accent} weight="semibold" resizeMode="scaleAspectFit" />
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.toolBtn,
+            chromeVisible && styles.toolBtnActive,
+            pressed && { opacity: 0.85 },
+          ]}
+          onPress={() => setChromeVisible((v) => !v)}
+          accessibilityLabel={chromeVisible ? 'Hide map info' : 'Show map info'}
+        >
+          <SymbolView
+            name="info.circle"
+            size={22}
+            tintColor={chromeVisible ? '#fff' : C.accent}
+            weight="semibold"
+            resizeMode="scaleAspectFit"
+          />
         </Pressable>
       </View>
 

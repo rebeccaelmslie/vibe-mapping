@@ -202,3 +202,9 @@ export function mapSpecToStyle(spec: MapSpec, opts: RenderOptions): MapLibreStyl
 }
 
 export type { MapLibreStyle } from './maplibre-types';
+export {
+  LINZ_ATTRIBUTION,
+  MAPTILER_ATTRIBUTION,
+  creditsFor,
+  type AttributionCredits,
+} from './basemap';

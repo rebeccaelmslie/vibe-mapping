@@ -34,10 +34,29 @@ const MAPTILER_TILES: Record<Basemap, string> = {
   hybrid: `${MAPTILER}/maps/hybrid/256/{z}/{x}/{y}.jpg`,
 };
 
-const MAPTILER_ATTRIBUTION =
+export const MAPTILER_ATTRIBUTION =
   '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>';
-const LINZ_ATTRIBUTION =
+export const LINZ_ATTRIBUTION =
   '© <a href="https://www.linz.govt.nz/">Toitū Te Whenua LINZ</a> · CC BY 4.0';
+
+/**
+ * Plain-text attribution credits for the chrome to render. The values above
+ * are HTML for the embedded MapLibre attribution control; the chrome wants
+ * unstyled strings.
+ */
+export interface AttributionCredits {
+  /** e.g. "© Toitū Te Whenua LINZ" */
+  basemap: string;
+  /** e.g. "© MapTiler · © OpenStreetMap" — for labels & glyphs. */
+  labels: string;
+}
+
+export function creditsFor(basemap: 'aerial' | 'streets' | 'hybrid', hasLinz: boolean): AttributionCredits {
+  const linz = '© Toitū Te Whenua LINZ';
+  const mt = '© MapTiler · © OpenStreetMap';
+  if (basemap === 'aerial' && hasLinz) return { basemap: linz, labels: mt };
+  return { basemap: mt, labels: mt };
+}
 
 export function basemapSource(basemap: Basemap, keys: BasemapKeys): RasterSource {
   // Local tile pack (from a `.vibemap` import) wins over everything else.
