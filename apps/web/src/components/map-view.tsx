@@ -21,11 +21,36 @@ interface SourceCounter {
   loaded: Set<string>;
 }
 
-export function MapView({ spec }: { spec: MapSpec }) {
+export function MapView({
+  spec,
+  onMap,
+  printMode = false,
+}: {
+  spec: MapSpec;
+  /** Receives the MapLibre instance after init (and null on teardown). */
+  onMap?: (map: maplibregl.Map | null) => void;
+  /** Print/preview mode: hide the interactive nav control (zoom/compass). */
+  printMode?: boolean;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const scaleCtrlRef = useRef<maplibregl.ScaleControl | null>(null);
+  const onMapRef = useRef(onMap);
+  onMapRef.current = onMap;
   const prevView = useRef('');
   const justInitedRef = useRef(false);
+
+  // Add/remove the scale control to match the layout, without re-adding it.
+  function syncScaleBar(map: maplibregl.Map, show: boolean) {
+    if (show && !scaleCtrlRef.current) {
+      const ctrl = new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' });
+      scaleCtrlRef.current = ctrl;
+      map.addControl(ctrl, 'bottom-left');
+    } else if (!show && scaleCtrlRef.current) {
+      map.removeControl(scaleCtrlRef.current);
+      scaleCtrlRef.current = null;
+    }
+  }
   const counterRef = useRef<SourceCounter>({ total: 0, loaded: new Set() });
   const errorsRef = useRef<{ when: string; sourceId: string; message: string; status?: number; url?: string }[]>([]);
   const [status, setStatus] = useState('');
@@ -42,17 +67,18 @@ export function MapView({ spec }: { spec: MapSpec }) {
       zoom: spec.initialView.zoom,
       bearing: spec.initialView.bearing,
       pitch: spec.initialView.pitch,
-      // Required so /debug/report can capture the canvas via toDataURL.
+      // Required so /debug/report and PDF export can capture the canvas.
       preserveDrawingBuffer: true,
+      // The print sheet draws its own attribution footer.
+      attributionControl: printMode ? false : undefined,
     });
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
-      'top-right',
-    );
-    map.addControl(
-      new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }),
-      'bottom-left',
-    );
+    if (!printMode) {
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+        'top-right',
+      );
+    }
+    syncScaleBar(map, spec.layout.scaleBar.visible);
 
     // Surface silent MapLibre failures (CORS, 404, malformed GeoJSON, tiles).
     // Use console.warn (not error) so Next's dev overlay doesn't catch it as
@@ -98,9 +124,12 @@ export function MapView({ spec }: { spec: MapSpec }) {
     mapRef.current = map;
     justInitedRef.current = true;
     prevView.current = JSON.stringify(spec.initialView);
+    onMapRef.current?.(map);
     return () => {
+      onMapRef.current?.(null);
       map.remove();
       mapRef.current = null;
+      scaleCtrlRef.current = null;
     };
     // Initialise once; subsequent spec changes are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,6 +138,8 @@ export function MapView({ spec }: { spec: MapSpec }) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    // The scale bar can be toggled via the layout at any time.
+    syncScaleBar(map, spec.layout.scaleBar.visible);
     // Skip the redundant first-render setStyle — the constructor just used
     // the same spec, and racing the in-flight style load can leave the map
     // with no style at all (canvas renders black).
@@ -206,18 +237,20 @@ export function MapView({ spec }: { spec: MapSpec }) {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
-      {status && (
+      {!printMode && status && (
         <div className="pointer-events-none absolute left-2 top-2 rounded bg-black/70 px-2 py-1 text-xs text-white">
           {status}
         </div>
       )}
-      <button
-        onClick={sendReport}
-        title="Send a screenshot + map state to Claude"
-        className="absolute bottom-3 left-3 rounded-md bg-fuchsia-700 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-fuchsia-600"
-      >
-        📸 Send report
-      </button>
+      {!printMode && (
+        <button
+          onClick={sendReport}
+          title="Send a screenshot + map state to Claude"
+          className="absolute bottom-3 left-3 rounded-md bg-fuchsia-700 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-fuchsia-600"
+        >
+          📸 Send report
+        </button>
+      )}
     </div>
   );
 }

@@ -3,17 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import type { MapSpec } from '@vibe/shared';
+import { mapSpec, type MapSpec } from '@vibe/shared';
 import { api, type SourceRow } from '@/lib/api';
 import { toCatalog } from '@/lib/catalog';
+import type maplibregl from 'maplibre-gl';
 import { MapView } from '@/components/map-view';
+import { MapChrome } from '@/components/map-chrome';
 import { ChatPanel, type ChatMessage } from '@/components/chat-panel';
+import type { Artifact } from '@/lib/artifact';
 import { UploadDropzone } from '@/components/upload-dropzone';
 import { ShareControl } from '@/components/share-control';
 import { SourcesPanel } from '@/components/sources-panel';
+import { ExportView } from '@/components/export-view';
 import { useToast } from '@/components/toast';
+import { exportMapPdf } from '@/lib/export-pdf';
+import type { ExportOptions } from '@/lib/page-layout';
 
-async function postChat(spec: MapSpec, sources: ReturnType<typeof toCatalog>, messages: ChatMessage[]) {
+async function postChat(
+  spec: MapSpec,
+  sources: ReturnType<typeof toCatalog>,
+  messages: ChatMessage[],
+  artifact?: Artifact,
+) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,6 +32,9 @@ async function postChat(spec: MapSpec, sources: ReturnType<typeof toCatalog>, me
       spec,
       sources,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      ...(artifact
+        ? { artifact: { kind: artifact.kind, name: artifact.name, mediaType: artifact.mediaType, data: artifact.data } }
+        : {}),
     }),
   });
   const data = (await res.json()) as
@@ -43,10 +57,28 @@ export default function ProjectWorkspace() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [map, setMap] = useState<maplibregl.Map | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportMode, setExportMode] = useState(false);
 
   // Keep a ref so async callbacks always see the latest spec/messages.
   const specRef = useRef<MapSpec | null>(null);
   specRef.current = spec;
+
+  const handleExportPdf = useCallback(
+    async (opts: ExportOptions) => {
+      if (!map || !specRef.current) return;
+      setExporting(true);
+      try {
+        await exportMapPdf(map, specRef.current, opts);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'PDF export failed', 'error');
+      } finally {
+        setExporting(false);
+      }
+    },
+    [map, toast],
+  );
 
   useEffect(() => {
     (async () => {
@@ -56,7 +88,9 @@ export default function ProjectWorkspace() {
         setSources(sources);
         const map = maps[0] ?? (await api.createMap(projectId, 'Untitled map')).map;
         setMapId(map.id);
-        setSpec(map.spec);
+        // Parse to fill schema defaults (e.g. `layout`) for maps persisted
+        // before newer fields existed.
+        setSpec(mapSpec.parse(map.spec));
       } catch (e) {
         toast(e instanceof Error ? e.message : 'Failed to load project', 'error');
       }
@@ -64,12 +98,12 @@ export default function ProjectWorkspace() {
   }, [projectId, toast]);
 
   const runChat = useCallback(
-    async (history: ChatMessage[], catalog = toCatalog(sources)) => {
+    async (history: ChatMessage[], catalog = toCatalog(sources), artifact?: Artifact) => {
       const currentSpec = specRef.current;
       if (!currentSpec || !mapId) return;
       setBusy(true);
       try {
-        const { spec: nextSpec, message, applied } = await postChat(currentSpec, catalog, history);
+        const { spec: nextSpec, message, applied } = await postChat(currentSpec, catalog, history, artifact);
         setSpec(nextSpec);
         setMessages([...history, { role: 'assistant', content: message, applied }]);
         await api.updateMap(mapId, nextSpec);
@@ -84,10 +118,19 @@ export default function ProjectWorkspace() {
   );
 
   const handleSend = useCallback(
-    (text: string) => {
-      const history = [...messages, { role: 'user' as const, content: text }];
+    (text: string, artifact?: Artifact) => {
+      const history: ChatMessage[] = [
+        ...messages,
+        {
+          role: 'user',
+          content: text,
+          ...(artifact
+            ? { artifact: { kind: artifact.kind, name: artifact.name, previewUrl: artifact.previewUrl } }
+            : {}),
+        },
+      ];
       setMessages(history);
-      void runChat(history);
+      void runChat(history, undefined, artifact);
     },
     [messages, runChat],
   );
@@ -120,6 +163,22 @@ export default function ProjectWorkspace() {
     [projectId, messages, runChat, toast],
   );
 
+  if (exportMode && spec) {
+    return (
+      <ExportView
+        spec={spec}
+        messages={messages}
+        busy={busy}
+        exporting={exporting}
+        onSend={handleSend}
+        onExportPdf={handleExportPdf}
+        onBack={() => setExportMode(false)}
+        onMap={setMap}
+        onError={(m) => toast(m, 'error')}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
@@ -129,13 +188,25 @@ export default function ProjectWorkspace() {
           </Link>
           <span className="font-medium">{projectName || 'Loading…'}</span>
         </div>
-        <ShareControl mapId={mapId} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExportMode(true)}
+            disabled={!spec}
+            className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm hover:border-neutral-500 disabled:opacity-40"
+          >
+            Export
+          </button>
+          <ShareControl mapId={mapId} />
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           {spec ? (
-            <MapView spec={spec} />
+            <>
+              <MapView spec={spec} onMap={setMap} />
+              <MapChrome spec={spec} visible />
+            </>
           ) : (
             <div className="flex h-full items-center justify-center text-neutral-500">Loading map…</div>
           )}
@@ -154,7 +225,12 @@ export default function ProjectWorkspace() {
           </div>
           <SourcesPanel sources={sources} />
           <div className="min-h-0 flex-1">
-            <ChatPanel messages={messages} busy={busy} onSend={handleSend} />
+            <ChatPanel
+              messages={messages}
+              busy={busy}
+              onSend={handleSend}
+              onError={(m) => toast(m, 'error')}
+            />
           </div>
         </aside>
       </div>

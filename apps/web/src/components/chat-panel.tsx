@@ -1,23 +1,30 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import type { Artifact } from '@/lib/artifact';
+import { useArtifactPicker, ArtifactAttachButton, ArtifactPreview } from './artifact-attach';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   applied?: string[];
+  /** File attached to a user message, for display. */
+  artifact?: { kind: Artifact['kind']; name: string; previewUrl?: string };
 }
 
 export function ChatPanel({
   messages,
   busy,
   onSend,
+  onError,
 }: {
   messages: ChatMessage[];
   busy: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, artifact?: Artifact) => void;
+  onError?: (message: string) => void;
 }) {
   const [input, setInput] = useState('');
+  const { artifact, setArtifact, fileRef, pick } = useArtifactPicker(onError);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,9 +33,12 @@ export function ChatPanel({
 
   function submit() {
     const text = input.trim();
-    if (!text || busy) return;
+    // Allow sending with just a file (we supply a default ask below).
+    if ((!text && !artifact) || busy) return;
+    const ask = text || 'Take a look at this file and use it for my map.';
     setInput('');
-    onSend(text);
+    setArtifact(null);
+    onSend(ask, artifact ?? undefined);
   }
 
   return (
@@ -37,7 +47,7 @@ export function ChatPanel({
         {messages.length === 0 && (
           <p className="text-sm text-neutral-500">
             Upload data, then ask me to style it — e.g. “make the tracks dashed orange and label
-            them by name”.
+            them by name”. You can also attach a file (image, PDF, notes) for me to work from.
           </p>
         )}
         {messages.map((m, i) => (
@@ -49,6 +59,20 @@ export function ChatPanel({
                 : 'mr-8 rounded-lg bg-neutral-800 px-3 py-2 text-sm text-neutral-100'
             }
           >
+            {m.artifact &&
+              (m.artifact.kind === 'image' && m.artifact.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={m.artifact.previewUrl}
+                  alt={m.artifact.name}
+                  className="mb-2 max-h-40 w-full rounded-md object-cover"
+                />
+              ) : (
+                <div className="mb-2 flex items-center gap-2 rounded-md bg-black/20 px-2 py-1 text-xs">
+                  <span aria-hidden>{m.artifact.kind === 'pdf' ? '📄' : '📝'}</span>
+                  <span className="truncate">{m.artifact.name}</span>
+                </div>
+              ))}
             <p className="whitespace-pre-wrap">{m.content}</p>
             {m.applied && m.applied.length > 0 && (
               <ul className="mt-2 space-y-1 border-t border-neutral-700 pt-2 text-xs text-neutral-400">
@@ -64,7 +88,9 @@ export function ChatPanel({
       </div>
 
       <div className="border-t border-neutral-800 p-3">
+        {artifact && <ArtifactPreview artifact={artifact} onRemove={() => setArtifact(null)} />}
         <div className="flex gap-2">
+          <ArtifactAttachButton fileRef={fileRef} onPick={pick} disabled={busy} />
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -80,7 +106,7 @@ export function ChatPanel({
           />
           <button
             onClick={submit}
-            disabled={busy || !input.trim()}
+            disabled={busy || (!input.trim() && !artifact)}
             className="self-end rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             Send

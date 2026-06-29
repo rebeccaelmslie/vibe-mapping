@@ -15,7 +15,45 @@ const bodySchema = z.object({
   messages: z
     .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() }))
     .min(1),
+  // Optional artifact attached to the latest user turn for Claude to consider:
+  // an image (vision) or a document (PDF base64 / text). data is base64 for
+  // image+pdf, raw text for text.
+  artifact: z
+    .object({
+      kind: z.enum(['image', 'pdf', 'text']),
+      name: z.string(),
+      mediaType: z.string(),
+      data: z.string().min(1),
+    })
+    .optional(),
 });
+
+const IMAGE_MEDIA = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+type Artifact = z.infer<typeof bodySchema>['artifact'];
+
+function artifactBlock(a: NonNullable<Artifact>): Anthropic.ContentBlockParam {
+  if (a.kind === 'image') {
+    const media_type = (IMAGE_MEDIA.has(a.mediaType) ? a.mediaType : 'image/jpeg') as
+      | 'image/jpeg'
+      | 'image/png'
+      | 'image/gif'
+      | 'image/webp';
+    return { type: 'image', source: { type: 'base64', media_type, data: a.data } };
+  }
+  if (a.kind === 'pdf') {
+    return {
+      type: 'document',
+      title: a.name,
+      source: { type: 'base64', media_type: 'application/pdf', data: a.data },
+    };
+  }
+  return {
+    type: 'document',
+    title: a.name,
+    source: { type: 'text', media_type: 'text/plain', data: a.data },
+  };
+}
 
 const anthropicTools = TOOLS.map((t) => ({
   name: t.name,
@@ -34,16 +72,24 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { sources, messages } = parsed.data;
+  const { sources, messages, artifact } = parsed.data;
   let spec: MapSpec = parsed.data.spec;
   const ctx = { sources };
   const applied: string[] = [];
 
   const client = new Anthropic({ apiKey });
-  const convo: Anthropic.MessageParam[] = messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const lastUserIdx = messages.map((m) => m.role).lastIndexOf('user');
+  const convo: Anthropic.MessageParam[] = messages.map((m, i) => {
+    // Attach the artifact to the most recent user turn, ahead of its text so
+    // Claude reads the file as context for the request.
+    if (artifact && i === lastUserIdx) {
+      return {
+        role: m.role,
+        content: [artifactBlock(artifact), { type: 'text', text: m.content }],
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
 
   let finalText = '';
 
@@ -55,7 +101,9 @@ export async function POST(req: Request) {
         system: [
           {
             type: 'text',
-            text: buildSystemPrompt(spec, sources),
+            text: buildSystemPrompt(spec, sources, {
+              artifact: artifact ? { kind: artifact.kind, name: artifact.name } : undefined,
+            }),
             cache_control: { type: 'ephemeral' },
           },
         ],

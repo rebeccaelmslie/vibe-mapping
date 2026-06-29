@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import type { MapSpec } from '@vibe/shared';
+import { mapSpec, type MapSpec } from '@vibe/shared';
 import { api } from '@/lib/api';
 import { MapView } from '@/components/map-view';
 import { MapChrome } from '@/components/map-chrome';
@@ -18,7 +18,8 @@ export default function SharedMap() {
     api
       .getShared(token)
       .then((r) => {
-        setSpec(r.map.spec);
+        // Parse to fill schema defaults (e.g. `layout`) for older specs.
+        setSpec(mapSpec.parse(r.map.spec));
         setName(r.map.name);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load map'));
