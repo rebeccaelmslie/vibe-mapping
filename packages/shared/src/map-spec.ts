@@ -113,6 +113,33 @@ export const initialView = z.object({
 });
 export type InitialView = z.infer<typeof initialView>;
 
+// ---------------------------------------------------------------------------
+// Layout — the print/presentation furniture (title, legend, scale bar, north
+// arrow). Drives both the live on-screen chrome and PDF export. The LLM sets
+// this via the `set_layout` tool; the map itself stays the WYSIWYG preview.
+// ---------------------------------------------------------------------------
+
+export const legendPosition = z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+export type LegendPosition = z.infer<typeof legendPosition>;
+
+export const mapLayout = z
+  .object({
+    /** Map title shown across the top. Omit for none. */
+    title: z.string().optional(),
+    /** Smaller line under the title (e.g. date, subtitle). */
+    subtitle: z.string().optional(),
+    legend: z
+      .object({
+        visible: z.boolean().default(true),
+        position: legendPosition.default('bottom-right'),
+      })
+      .default({}),
+    scaleBar: z.object({ visible: z.boolean().default(true) }).default({}),
+    northArrow: z.object({ visible: z.boolean().default(false) }).default({}),
+  })
+  .default({});
+export type MapLayout = z.infer<typeof mapLayout>;
+
 export const mapSpec = z.object({
   id: z.string(),
   name: z.string(),
@@ -121,5 +148,7 @@ export const mapSpec = z.object({
   sources: z.array(source).default([]),
   /** Ordered top-first: layers[0] renders above layers[1], etc. */
   layers: z.array(layer).default([]),
+  /** Print/presentation furniture. Defaults fill in for older specs. */
+  layout: mapLayout,
 });
 export type MapSpec = z.infer<typeof mapSpec>;

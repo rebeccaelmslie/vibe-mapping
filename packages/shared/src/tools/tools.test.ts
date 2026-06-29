@@ -121,6 +121,30 @@ describe('applyTool', () => {
     expect(spec.layers.map((l) => l.id)).toEqual([a]);
   });
 
+  it('defaults layout, then set_layout patches title + legend + clears title', () => {
+    let spec = emptySpec();
+    // Backward-compat default: every parsed spec has a layout.
+    expect(spec.layout.legend.position).toBe('bottom-right');
+    expect(spec.layout.legend.visible).toBe(true);
+
+    spec = applyTool(
+      'set_layout',
+      { title: 'Whakarewarewa Forest', legend: { position: 'top-left' }, northArrow: { visible: true } },
+      spec,
+      ctx,
+    ).spec;
+    expect(spec.layout.title).toBe('Whakarewarewa Forest');
+    expect(spec.layout.legend.position).toBe('top-left');
+    expect(spec.layout.legend.visible).toBe(true); // untouched
+    expect(spec.layout.northArrow.visible).toBe(true);
+
+    // Passing null clears the title.
+    const out = applyTool('set_layout', { title: null, scaleBar: { visible: false } }, spec, ctx);
+    expect(out.spec.layout.title).toBeUndefined();
+    expect(out.spec.layout.scaleBar.visible).toBe(false);
+    expect(out.summary).toMatch(/title|scale bar/);
+  });
+
   it('throws on unknown tool and unknown source', () => {
     expect(() => applyTool('nope', {}, emptySpec(), ctx)).toThrow(/Unknown tool/);
     expect(() =>

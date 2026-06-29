@@ -291,6 +291,77 @@ const setBasemap = defineTool({
   },
 });
 
+const setLayout = defineTool({
+  name: 'set_layout',
+  description:
+    'Set the map\'s print/presentation furniture. Provide only what changes. ' +
+    'title/subtitle: strings (pass null to clear). ' +
+    'legend: { visible, position } where position is "top-left"|"top-right"|"bottom-left"|"bottom-right". ' +
+    'scaleBar: { visible }. northArrow: { visible }. ' +
+    'Use this when the user talks about the title, legend placement, scale bar, or north arrow — the live map updates and PDF export uses the same layout.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      title: { type: ['string', 'null'] },
+      subtitle: { type: ['string', 'null'] },
+      legend: {
+        type: 'object',
+        properties: {
+          visible: { type: 'boolean' },
+          position: {
+            type: 'string',
+            enum: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+          },
+        },
+      },
+      scaleBar: { type: 'object', properties: { visible: { type: 'boolean' } } },
+      northArrow: { type: 'object', properties: { visible: { type: 'boolean' } } },
+    },
+  },
+  schema: z.object({
+    title: z.string().nullable().optional(),
+    subtitle: z.string().nullable().optional(),
+    legend: z
+      .object({
+        visible: z.boolean().optional(),
+        position: z
+          .enum(['top-left', 'top-right', 'bottom-left', 'bottom-right'])
+          .optional(),
+      })
+      .optional(),
+    scaleBar: z.object({ visible: z.boolean().optional() }).optional(),
+    northArrow: z.object({ visible: z.boolean().optional() }).optional(),
+  }),
+  apply: (draft, args) => {
+    // draft.layout always exists here (mapSpec.parse fills the default).
+    const changed: string[] = [];
+    if ('title' in args) {
+      if (args.title) draft.layout.title = args.title;
+      else delete draft.layout.title;
+      changed.push('title');
+    }
+    if ('subtitle' in args) {
+      if (args.subtitle) draft.layout.subtitle = args.subtitle;
+      else delete draft.layout.subtitle;
+      changed.push('subtitle');
+    }
+    if (args.legend) {
+      if (args.legend.visible !== undefined) draft.layout.legend.visible = args.legend.visible;
+      if (args.legend.position) draft.layout.legend.position = args.legend.position;
+      changed.push('legend');
+    }
+    if (args.scaleBar?.visible !== undefined) {
+      draft.layout.scaleBar.visible = args.scaleBar.visible;
+      changed.push('scale bar');
+    }
+    if (args.northArrow?.visible !== undefined) {
+      draft.layout.northArrow.visible = args.northArrow.visible;
+      changed.push('north arrow');
+    }
+    return changed.length ? `Updated layout (${changed.join(', ')}).` : 'No layout changes.';
+  },
+});
+
 const zoomTo = defineTool({
   name: 'zoom_to',
   description:
@@ -336,6 +407,7 @@ export const TOOLS: ToolDef[] = [
   filterLayer,
   reorderLayers,
   setBasemap,
+  setLayout,
   zoomTo,
 ];
 
