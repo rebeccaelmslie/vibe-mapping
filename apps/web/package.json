@@ -15,7 +15,7 @@
     "@vibe/shared": "workspace:*",
     "jspdf": "^4.2.1",
     "maplibre-gl": "^4.7.1",
-    "next": "15.1.6",
+    "next": "15.5.19",
     "qrcode": "^1.5.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
