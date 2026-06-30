@@ -19,6 +19,12 @@ const schema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   S3_BUCKET: z.string().min(1),
+  // Path-style addressing (host/bucket/key) is required for MinIO; set "false"
+  // for virtual-host providers like Railway buckets / Tigris / R2.
+  S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   PORT: z.coerce.number().default(8787),
   // Base URL the browser/mobile use to reach THIS api (for building source URLs).
   PUBLIC_API_URL: z.string().url().default('http://localhost:8787'),

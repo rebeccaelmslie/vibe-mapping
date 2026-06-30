@@ -15,7 +15,7 @@ function client(): S3Client {
   cached = new S3Client({
     region: 'us-east-1',
     endpoint: e.S3_ENDPOINT,
-    forcePathStyle: true, // required for MinIO
+    forcePathStyle: e.S3_FORCE_PATH_STYLE, // true for MinIO; false for virtual-host (Railway/R2)
     credentials: { accessKeyId: e.S3_ACCESS_KEY, secretAccessKey: e.S3_SECRET_KEY },
   });
   return cached;
