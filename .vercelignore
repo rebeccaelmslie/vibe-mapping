@@ -1,0 +1,12 @@
+# Keep the Vercel upload to source only — it installs deps itself.
+**/node_modules
+.git
+**/.next
+**/.turbo
+**/dist
+**/.expo
+apps/mobile/ios
+apps/mobile/android
+scratchpad
+*.log
+.DS_Store
